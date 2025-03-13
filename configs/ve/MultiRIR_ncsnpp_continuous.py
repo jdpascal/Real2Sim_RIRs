@@ -116,9 +116,12 @@ def get_config():
     optim.grad_clip = 1.0
 
     config.seed = 42
-    config.device = (
-        torch.device("mps") if torch.mps.is_available() else torch.device("cpu")
-    )
+    if torch.cuda.is_available():
+        config.device = torch.device("cuda")
+    elif torch.mps.is_available():
+        config.device = torch.device("mps")
+    else:
+        config.device = torch.device("cpu")
 
     # training
     training.sde = "ouvesde"
