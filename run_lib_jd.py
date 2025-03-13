@@ -16,33 +16,31 @@
 # pylint: skip-file
 """Training and evaluation for score-based generative models. """
 import gc
-import io
-import os
-import time
 import glob
 import logging
+import os
+import time
+from pathlib import Path
 
-import numpy as np
 import matplotlib.pyplot as plt
-from torchsummary import summary
+import numpy as np
 import torch
+from absl import flags
+from lightning.fabric import Fabric
 from torch.utils.tensorboard import SummaryWriter
-from torchvision.utils import make_grid, save_image
 
-# Importer tous les modèles pour les enregistrer
-from models import ddpm, ncsnv2, ncsnpp
-import losses
-import sampling
-from models import utils as mutils
-from models.ema import ExponentialMovingAverage
 import datasets_jd as datasets
 import evaluation_jd as evaluation
 import likelihood
+import losses
+import sampling
 import sde_lib
-from absl import flags
-from utils import log_allocated_memory, save_checkpoint, restore_checkpoint
-from lightning.fabric import Fabric
-from pathlib import Path
+
+# Importer tous les modèles pour les enregistrer
+from models import ncsnpp
+from models import utils as mutils
+from models.ema import ExponentialMovingAverage
+from utils import restore_checkpoint, save_checkpoint
 
 FLAGS = flags.FLAGS
 
@@ -261,8 +259,8 @@ def train(config, workdir):
                     # Puisque ce sont des signaux 1D, on les trace directement.
                     signal_sample = generated_sample[:,c] / np.max(generated_sample[:,c])
                     signal_perfect = perfect_rir_sample[:,c]
-                    axes[c].plot(signal_sample, label=f"Channel sample")
-                    axes[c].plot(signal_perfect, label=f"Channel perfect")
+                    axes[c].plot(signal_sample, label="Channel sample")
+                    axes[c].plot(signal_perfect, label="Channel perfect")
                     axes[c].set_ylim(bottom=-1.5, top=1.5)
                 
                 axes[-1].set_xlabel("Time")

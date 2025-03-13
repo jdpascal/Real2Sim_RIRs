@@ -21,13 +21,10 @@ import numpy as np
 import torch
 import torch.optim as optim
 from lightning import Fabric
-from torch.profiler import ProfilerActivity, profile, record_function
 
 from models import utils as mutils
 from sde_lib import SDE, VESDE, VPSDE
-from utils import log_allocated_memory
 
-from torchsummary import summary
 
 def get_optimizer(config, params):
     """Returns a flax optimizer object based on `config`."""
