@@ -1,6 +1,7 @@
 #!/bin/bash -l
 
-#SBATCH --nodes=2               # This needs to match --ddp-nodes
+#SBATCH -p publicgpu
+#SBATCH --nodes=3               # This needs to match --ddp-nodes
 #SBATCH --ntasks-per-node=4     # This needs to match --ddp-devices-per-node
 #SBATCH --gres=gpu:4            # Request N GPUs per machine
 #SBATCH --mem=0
@@ -24,7 +25,7 @@ export PYTHONFAULTHANDLER=1
 srun python main.py \
     --config configs/ve/MultiRIR_ncsnpp_continuous.py \
     --mode train \
-    --eval_folder eval \
+    --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \
-    --ddp-nodes=2 \
-    --ddp-devices-per-node=4
+    --ddp-nodes 3 \
+    --ddp-devices-per-node 4
