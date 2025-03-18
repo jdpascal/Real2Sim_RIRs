@@ -17,10 +17,16 @@
 """Training NCSN++ on Church with VE SDE."""
 
 import ml_collections
-from lightning import Fabric
+import torch
 
 
-def get_config():
+def get_config() -> ml_collections.ConfigDict:
+    """
+    Configuration for model shape, hyper parameters, training and eval options, etc
+
+    Returns:
+        ml_collections.ConfigDict: Configuration object
+    """
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
@@ -61,13 +67,13 @@ def get_config():
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.image_size = 128
+    data.image_size = 256
     data.channels = 32
-    data.rir_samples_count = 128
+    data.rir_samples_count = 1024
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_2/"
-    data.num_room = 128
+    data.num_room = 512
     data.pos_per_room = 4
 
     # model
@@ -116,7 +122,12 @@ def get_config():
     optim.grad_clip = 1.0
 
     config.seed = 42
-    config.device = Fabric.device
+    if torch.cuda.is_available():
+        config.device = torch.device("cuda")
+    elif torch.mps.is_available():
+        config.device = torch.device("mps")
+    else:
+        config.device = torch.device("cpu")
 
     # training
     training.sde = "ouvesde"
