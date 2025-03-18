@@ -16,8 +16,8 @@
 # Lint as: python3
 """Training NCSN++ on Church with VE SDE."""
 
-import torch
 import ml_collections
+from lightning import Fabric
 
 
 def get_config():
@@ -116,12 +116,7 @@ def get_config():
     optim.grad_clip = 1.0
 
     config.seed = 42
-    if torch.cuda.is_available():
-        config.device = torch.device("cuda")
-    elif torch.mps.is_available():
-        config.device = torch.device("mps")
-    else:
-        config.device = torch.device("cpu")
+    config.device = Fabric.device
 
     # training
     training.sde = "ouvesde"
