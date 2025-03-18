@@ -1,21 +1,24 @@
 import concurrent.futures
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
 import numpy as np
 import pyroomacoustics as pra
-from pyroomacoustics.datasets import SOFADatabase
-import function as fun
 import pyroomacoustics.directivities.sofa as sf
+from alive_progress import alive_bar
+from pyroomacoustics.datasets import SOFADatabase
 from pyroomacoustics.directivities import (
     MeasuredDirectivityFile,
     Rotation3D,
 )
-from pathlib import Path
-import os
-import logging
-import json
-import sys
+
+import function as fun
 
 # Constants
-num_room = 128
+num_room = 1024
 positions_per_room = 4
 distance_src_mics = 1
 dist_mur = 1
@@ -66,8 +69,6 @@ def calculate_rirs_for_config(
     cartesian_coords = pos_mics - pos_src
     r, theta, phi = fun.cartesian_to_spherical(cartesian_coords)
     orientation = Rotation3D([theta - 90, phi + 180], "yz", degrees=True)
-    theta_mic, phi_mic = fun.random_angles()
-    orientation_mics = Rotation3D([theta_mic, phi_mic], "yz", degrees=True)
     # dir = DirectionVector(theta, phi)
 
     # Pick random coefficient for absorption but realistic
@@ -132,12 +133,12 @@ def calculate_rirs_for_config(
     list_dir = []
     for j in range(32):
         dir_obj_Emic = eigenmike.get_mic_directivity(
-            f"EM_32_{j}", orientation=orientation_mics
+            f"EM_32_{j}", orientation=orientation
         )
         list_dir.append(dir_obj_Emic)
     room_real.add_microphone_array(
-        (np.zeros((32, 3)) + pos_mics).T, directivity=list_dir
-    )  # , directivity=list_dir pos_eigenmike.T
+        (pos_eigenmike.T + pos_mics).T, directivity=list_dir
+    )  # , directivity=list_dir
 
     # Create the "perfect" room with omnidirectional micro and source
     room_perfect = pra.ShoeBox(
@@ -273,16 +274,14 @@ def main():
 
     configurations = []
     for room_index in range(num_room):
-        logger.info("Generating room %d / %d", room_index + 1, num_room)
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]
         # Generate #positions_per_room mesures in the room
         for position_index in range(positions_per_room):
             # Generate 2 random points in the room, with constraints on location
-            approximation = fun.approximation_distance()
             pos_src, pos_mics = fun.generate_random_points(
-                Dx, Dy, Dz, distance_src_mics + approximation, dist_mur
+                Dx, Dy, Dz, distance_src_mics, dist_mur
             )
             configurations.append(
                 (
@@ -302,11 +301,14 @@ def main():
             executor.submit(calculate_rirs_for_config, *config)
             for config in configurations
         ]
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()  # This will raise an exception if the future raised one
-            except Exception as e:
-                logger.error(f"An error occurred: {e}")
+        # Create a progress bar that will fill up as new rirs are calculated
+        with alive_bar(num_room * positions_per_room) as bar:
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()  # This will raise an exception if the future raised one
+                    bar()  # pylint:disable=not-callable
+                except Exception as e:
+                    logger.error(f"An error occurred: {e}")
 
     logger.info("Génération des données terminée.")
     # Fermeture du fichier de log
