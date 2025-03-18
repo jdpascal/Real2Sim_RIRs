@@ -241,22 +241,22 @@ def get_step_fn(
         if train:
             optimizer = state["optimizer"]
             
-            logging.info(" -> running optimizer.zero_grad()")
+            logging.debug(" -> running optimizer.zero_grad()")
             optimizer.zero_grad()
         
             loss = loss_fn(model, batch)
             
-            logging.info(" -> running loss.backward()")
+            logging.debug(" -> running loss.backward()")
             fabric.backward(loss)
             
-            logging.info(
+            logging.debug(
                 " -> running optimize_fn(optimizer, model.parameters(), step=state['step'])"
             )
             optimize_fn(optimizer, model.parameters(), step=state["step"])
             
-            logging.info(" -> incrementing step")
+            logging.debug(" -> incrementing step")
             state["step"] += 1
-            logging.info(" -> running state['ema'].update(model.parameters())")
+            logging.debug(" -> running state['ema'].update(model.parameters())")
             state["ema"].update(model.parameters())
         else:
             with torch.no_grad():

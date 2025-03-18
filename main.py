@@ -86,19 +86,10 @@ def main():
     """
     Script entrypoint
     """
-    # Parse input arguments and setup logger
+    
+    # Parse input arguments
     args = parse_args()
-    logging.basicConfig(
-        format="%(asctime)s: [%(levelname)s] %(filename)s:%(lineno)d (%(funcName)s) - %(message)s",
-        level=logging.DEBUG,
-    )
-    # Création du répertoire de travail
-    os.makedirs(args.workdir, exist_ok=True)
-
-    # Charger la configuration depuis le fichier Python
-    print("loading config")
-    config = load_config(args.config)
-
+    
     # Configure Fabric to take care of handling precision, parallelisation, etc
     # TODO: Make precision an argument or a config parameter
     fabric = Fabric(
@@ -107,6 +98,19 @@ def main():
         devices=args.ddp_devices_per_node,
     )
     fabric.launch()
+    
+    # Configure logger format and log level
+    logging.basicConfig(
+        format=f"[rank-{fabric.global_rank}] - %(asctime)s %(levelname)s: %(filename)s:%(lineno)d (%(funcName)s) - %(message)s",
+        level=logging.INFO, # TODO: Make log level a command line argument (-v)
+    )
+    logging.info("Configured logger.")
+    # Création du répertoire de travail
+    os.makedirs(args.workdir, exist_ok=True)
+
+    # Charger la configuration depuis le fichier Python
+    print("loading config")
+    config = load_config(args.config)
 
     # Exécuter le pipeline en fonction du mode choisi
     if args.mode == "train":

@@ -172,7 +172,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     logging.info("Début de la boucle d'entraînement à l'étape %d.", initial_step)
 
     for step in range(initial_step, num_train_steps + 1):
-        logging.info("\n\nLoop start %d", step)
+        logging.info("Loop start %d", step)
         try:
             batch = next(train_iter)
         except StopIteration:
@@ -208,7 +208,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         loss = train_step_fn(state, current_batch)
         # del current_batch
 
-        logging.info("étape: %d", step)
         if step % config.training.log_freq == 0:
             logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
             writer.add_scalar("training_loss", loss.item(), step)
