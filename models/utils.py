@@ -97,16 +97,7 @@ def create_model(config):
     """Create the score model."""
     model_name = config.model.name
     score_model: torch.nn.Module = get_model(model_name)(config)
-    score_model = score_model.to(device=config.device, dtype=torch.float32)
-    # ----- Marceau -----
-    # Apparamment il serait mieux d'utiliser DistributedDataParallel plutôt que DataParallel:
-    # https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel
-    # https://pytorch.org/docs/stable/notes/cuda.html#cuda-nn-ddp-instead
-    #
-    # Perso j'ai pas réussi à le faire marcher encore, je pense qu'il faudrait faire quelques modifs dans le code.
-    # Pour l'instant on peut laisser comme ça mais ça pourrait être une bonne piste d'optimisation pour plus tard si le besoin se fait sentir.
-    # score_model = torch.nn.parallel.DistributedDataParallel(score_model)
-    score_model = torch.nn.DataParallel(score_model)
+    score_model = score_model.to(device=config.device)
     return score_model
 
 
