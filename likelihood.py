@@ -89,8 +89,8 @@ def get_likelihood_fn(sde, inverse_scaler, hutchinson_type='Rademacher',
         raise NotImplementedError(f"Hutchinson type {hutchinson_type} unknown.")
 
       def ode_func(t, x):
-        sample = mutils.from_flattened_numpy(x[:-shape[0]], shape).to(data.device).type(torch.float32)
-        vec_t = torch.ones(sample.shape[0], device=sample.device) * t
+        sample = mutils.from_flattened_numpy(x[:-shape[0]], shape)
+        vec_t = torch.ones(sample.shape[0]) * t
         drift = mutils.to_flattened_numpy(drift_fn(model, sample, vec_t))
         logp_grad = mutils.to_flattened_numpy(div_fn(model, sample, vec_t, epsilon))
         return np.concatenate([drift, logp_grad], axis=0)
@@ -99,8 +99,8 @@ def get_likelihood_fn(sde, inverse_scaler, hutchinson_type='Rademacher',
       solution = integrate.solve_ivp(ode_func, (eps, sde.T), init, rtol=rtol, atol=atol, method=method)
       nfe = solution.nfev
       zp = solution.y[:, -1]
-      z = mutils.from_flattened_numpy(zp[:-shape[0]], shape).to(data.device).type(torch.float32)
-      delta_logp = mutils.from_flattened_numpy(zp[-shape[0]:], (shape[0],)).to(data.device).type(torch.float32)
+      z = mutils.from_flattened_numpy(zp[:-shape[0]], shape)
+      delta_logp = mutils.from_flattened_numpy(zp[-shape[0]:], (shape[0],))
       prior_logp = sde.prior_logp(z)
       bpd = -(prior_logp + delta_logp) / np.log(2)
       N = np.prod(shape[1:])

@@ -67,7 +67,7 @@ class SDE(abc.ABC):
         dt = 1 / self.N
         drift, diffusion = self.sde(x, t)
         f = drift * dt
-        G = diffusion * torch.sqrt(torch.tensor(dt, device=t.device))
+        G = diffusion * torch.sqrt(torch.tensor(dt))
         return f, G
 
     def reverse(self, score_fn, probability_flow=False):
@@ -204,7 +204,7 @@ class OUVESDE(SDE):
     def _mean(self, x0, y, t):
         theta = self.theta
         # print("t x0 et y ",t.shape, x0.shape, y.shape)
-        exp_interp = torch.exp(-theta * t)[:, None, None, None]
+        exp_interp = torch.exp(-theta * t)[:, None, None, None].to(device=x0.device)
         return exp_interp * x0 + (1 - exp_interp) * y
 
     def alpha(self, t):
@@ -291,8 +291,8 @@ class VPSDE(SDE):
     def discretize(self, x, t):
         """DDPM discretization."""
         timestep = (t * (self.N - 1) / self.T).long()
-        beta = self.discrete_betas.to(x.device)[timestep]
-        alpha = self.alphas.to(x.device)[timestep]
+        beta = self.discrete_betas[timestep]
+        alpha = self.alphas[timestep]
         sqrt_beta = torch.sqrt(beta)
         f = torch.sqrt(alpha)[:, None, None, None] * x - x
         G = sqrt_beta
@@ -369,7 +369,7 @@ class VESDE(SDE):
         drift = torch.zeros_like(x)
         diffusion = sigma * torch.sqrt(
             torch.tensor(
-                2 * (np.log(self.sigma_max) - np.log(self.sigma_min)), device=t.device
+                2 * (np.log(self.sigma_max) - np.log(self.sigma_min))
             )
         )
         return drift, diffusion
@@ -392,11 +392,11 @@ class VESDE(SDE):
     def discretize(self, x, t):
         """SMLD(NCSN) discretization."""
         timestep = (t * (self.N - 1) / self.T).long()
-        sigma = self.discrete_sigmas.to(t.device)[timestep]
+        sigma = self.discrete_sigmas[timestep]
         adjacent_sigma = torch.where(
             timestep == 0,
             torch.zeros_like(t),
-            self.discrete_sigmas[timestep - 1].to(t.device),
+            self.discrete_sigmas[timestep - 1],
         )
         f = torch.zeros_like(x)
         G = torch.sqrt(sigma**2 - adjacent_sigma**2)

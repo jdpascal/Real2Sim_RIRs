@@ -25,8 +25,7 @@ class ExponentialMovingAverage:
       raise ValueError('Decay must be between 0 and 1')
     self.decay = decay
     self.num_updates = 0 if use_num_updates else None
-    self.shadow_params = [p.clone().detach()
-                          for p in parameters if p.requires_grad]
+    self.shadow_params = [p for p in parameters if p.requires_grad]
     self.collected_params = []
 
   def update(self, parameters):

@@ -97,7 +97,7 @@ def create_model(config):
     """Create the score model."""
     model_name = config.model.name
     score_model: torch.nn.Module = get_model(model_name)(config)
-    score_model = score_model.to(device=config.device)
+    # score_model = score_model.to(device=config.device)
     return score_model
 
 
@@ -163,7 +163,7 @@ def get_score_fn(sde, model, train=False, continuous=False):
                 # For VP-trained models, t=0 corresponds to the lowest noise level
                 labels = t * (sde.N - 1)
                 score = model_fn(x, labels)
-                std = sde.sqrt_1m_alphas_cumprod.to(labels.device)[labels.long()]
+                std = sde.sqrt_1m_alphas_cumprod[labels.long()]
 
             score = -score / std[:, None, None, None]
             return score

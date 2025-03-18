@@ -181,7 +181,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
 
         # Si le dataset contient des clés spécifiques (ex. 'perfect_rir' et 'real_rir'), on les traite.
         if "perfect_rir" in batch and "real_rir" in batch:
-            perfect_rir = batch["perfect_rir"].to(config.device, dtype=torch.float32)
+            perfect_rir = batch["perfect_rir"]
             # print("perfect_rir.shape", perfect_rir.shape)
             # Si nécessaire, ajuster l'ordre des dimensions (ex. HWC -> CHW)
             if (
@@ -189,7 +189,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 and perfect_rir.shape[-1] != config.data.num_channels
             ):
                 perfect_rir = perfect_rir.permute(0, 2, 3, 1)
-            real_rir = batch["real_rir"].to(config.device, dtype=torch.float32)
+            real_rir = batch["real_rir"]
             # print("perfect_rir.shape", perfect_rir.shape)
             # print("real_rir.shape", real_rir.shape)
             if real_rir.ndim == 4 and real_rir.shape[-1] != config.data.num_channels:
@@ -198,7 +198,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             current_batch = (perfect_rir, real_rir)
         else:
             # Pour un dataset classique avec la clé 'image'.
-            img = batch["image"].to(config.device).float()
+            img = batch["image"]
             if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
                 img = img.permute(0, 3, 1, 2)
             # Appliquer la normalisation (si nécessaire).
@@ -224,8 +224,8 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 eval_iter = iter(eval_loader)
                 eval_batch = next(eval_iter)
             # Ici, on suppose que le dataset d'évaluation renvoie la clé 'image'.
-            eval_img_perfect = eval_batch["perfect_rir"].to(config.device).float()
-            eval_img_real = eval_batch["real_rir"].to(config.device).float()
+            eval_img_perfect = eval_batch["perfect_rir"].to(fabric.device)
+            eval_img_real = eval_batch["real_rir"].to(fabric.device)
             # print("avant permute ? eval perfect, real" , eval_img_perfect.shape, eval_img_real.shape)
             if (
                 eval_img_perfect.ndim == 4
@@ -331,7 +331,7 @@ def evaluate(config, workdir, eval_folder="eval"):
 
     # Initialisation du modèle, de l'optimizer et de l'EMA.
     score_model = mutils.create_model(config)
-    score_model = ncsnpp.NCSNpp(config.model).to(config.device)
+    score_model = ncsnpp.NCSNpp(config.model)
     optimizer = losses.get_optimizer(config, score_model.parameters())
     ema = ExponentialMovingAverage(
         score_model.parameters(), decay=config.model.ema_rate
@@ -432,17 +432,17 @@ def evaluate(config, workdir, eval_folder="eval"):
 
         # Tentative de chargement du checkpoint.
         try:
-            state = restore_checkpoint(ckpt_filename, state, device=config.device)
+            state = restore_checkpoint(ckpt_filename, state)
         except Exception:
             logging.warning(
                 "Problème lors du chargement du checkpoint, nouvelle tentative dans 60s..."
             )
             time.sleep(60)
             try:
-                state = restore_checkpoint(ckpt_filename, state, device=config.device)
+                state = restore_checkpoint(ckpt_filename, state)
             except Exception:
                 time.sleep(120)
-                state = restore_checkpoint(ckpt_filename, state, device=config.device)
+                state = restore_checkpoint(ckpt_filename, state)
 
         ema.copy_to(score_model.parameters())
 
@@ -450,7 +450,7 @@ def evaluate(config, workdir, eval_folder="eval"):
         if config.eval.enable_loss:
             all_losses = []
             for i, batch in enumerate(eval_loader):
-                img = batch["image"].to(config.device).float()
+                img = batch["image"]
                 if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
                     img = img.permute(0, 3, 1, 2)
                 img = scaler(img)
@@ -473,7 +473,7 @@ def evaluate(config, workdir, eval_folder="eval"):
             for repeat in range(bpd_num_repeats):
                 bpd_iter = iter(ds_bpd)
                 for batch_id, batch in enumerate(bpd_iter):
-                    img = batch["image"].to(config.device).float()
+                    img = batch["image"]
                     if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
                         img = img.permute(0, 3, 1, 2)
                     img = scaler(img)

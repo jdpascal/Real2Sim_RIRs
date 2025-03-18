@@ -64,8 +64,8 @@ def classifier_fn(images, inception_model):
     # Mise à l'échelle de [0, 255] vers [0, 1]
     images = images / 255.0
     # Normalisation avec les statistiques ImageNet
-    mean = torch.tensor([0.485, 0.456, 0.406], device=images.device).view(1, 3, 1, 1)
-    std  = torch.tensor([0.229, 0.224, 0.225], device=images.device).view(1, 3, 1, 1)
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+    std  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
     images = (images - mean) / std
     with torch.no_grad():
         features = inception_model(images)
@@ -117,14 +117,14 @@ def run_inception_distributed(input_tensor, inception_model, num_batches=1, ince
         features_list = []
         for i, split in enumerate(splits):
             device = torch.device(f'cuda:{i}')
-            split = split.to(device)
-            inception_model.to(device)
+            split = split
+            inception_model
             feat = run_inception(split, inception_model, num_batches, inceptionv3)
             features_list.append(feat.cpu())
         features = torch.cat(features_list, dim=0)
     else:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        input_tensor = input_tensor.to(device)
-        inception_model.to(device)
+        input_tensor = input_tensor
+        inception_model
         features = run_inception(input_tensor, inception_model, num_batches, inceptionv3)
     return {'pool_3': features, 'logits': None}

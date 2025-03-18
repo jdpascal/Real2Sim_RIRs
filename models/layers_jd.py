@@ -53,8 +53,7 @@ def ncsn_conv1x1(in_planes, out_planes, stride=1, bias=True, dilation=1, init_sc
 
 def variance_scaling(scale, mode, distribution,
                      in_axis=1, out_axis=0,
-                     dtype=torch.float32,
-                     device='cpu'):
+                     dtype=torch.float32):
   """Ported from JAX. """
 
   def _compute_fans(shape, in_axis=1, out_axis=0):
@@ -63,7 +62,7 @@ def variance_scaling(scale, mode, distribution,
     fan_out = shape[out_axis] * receptive_field_size
     return fan_in, fan_out
 
-  def init(shape, dtype=dtype, device=device):
+  def init(shape, dtype=dtype):
     fan_in, fan_out = _compute_fans(shape, in_axis, out_axis)
     if mode == "fan_in":
       denominator = fan_in
@@ -76,9 +75,9 @@ def variance_scaling(scale, mode, distribution,
         "invalid mode for variance scaling initializer: {}".format(mode))
     variance = scale / denominator
     if distribution == "normal":
-      return torch.randn(*shape, dtype=dtype, device=device) * np.sqrt(variance)
+      return torch.randn(*shape, dtype=dtype) * np.sqrt(variance)
     elif distribution == "uniform":
-      return (torch.rand(*shape, dtype=dtype, device=device) * 2. - 1.) * np.sqrt(3 * variance)
+      return (torch.rand(*shape, dtype=dtype) * 2. - 1.) * np.sqrt(3 * variance)
     else:
       raise ValueError("invalid distribution for variance scaling initializer")
 
@@ -266,7 +265,7 @@ class MSFBlock(nn.Module):
       self.convs.append(ncsn_conv3x3(in_planes[i], features, stride=1, bias=True))
 
   def forward(self, xs, shape):
-    sums = torch.zeros(xs[0].shape[0], self.features, *shape, device=xs[0].device)
+    sums = torch.zeros(xs[0].shape[0], self.features, *shape)
     for i in range(len(self.convs)):
       h = self.convs[i](xs[i])
       h = F.interpolate(h, size=shape, mode='bilinear', align_corners=True)
@@ -289,7 +288,7 @@ class CondMSFBlock(nn.Module):
       self.norms.append(normalizer(in_planes[i], num_classes, bias=True))
 
   def forward(self, xs, y, shape):
-    sums = torch.zeros(xs[0].shape[0], self.features, *shape, device=xs[0].device)
+    sums = torch.zeros(xs[0].shape[0], self.features, *shape)
     for i in range(len(self.convs)):
       h = self.norms[i](xs[i], y)
       h = self.convs[i](h)
@@ -542,7 +541,7 @@ def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
   # magic number 10000 is from transformers
   emb = math.log(max_positions) / (half_dim - 1)
   # emb = math.log(2.) / (half_dim - 1)
-  emb = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=timesteps.device) * -emb)
+  emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
   # emb = tf.range(num_embeddings, dtype=jnp.float32)[:, None] * emb[None, :]
   # emb = tf.cast(timesteps, dtype=jnp.float32)[:, None] * emb[None, :]
   emb = timesteps.float()[:, None] * emb[None, :]

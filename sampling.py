@@ -101,8 +101,7 @@ def get_sampling_fn(config, sde, shape, inverse_scaler, eps, y=None):
                                   y=y,
                                   inverse_scaler=inverse_scaler,
                                   denoise=config.sampling.noise_removal,
-                                  eps=eps,
-                                  device=config.device)
+                                  eps=eps)
   # Predictor-Corrector sampling. Predictor-only and Corrector-only samplers are special cases.
   elif sampler_name.lower() == 'pc':
     predictor = get_predictor(config.sampling.predictor.lower())
@@ -118,8 +117,7 @@ def get_sampling_fn(config, sde, shape, inverse_scaler, eps, y=None):
                                  probability_flow=config.sampling.probability_flow,
                                  continuous=config.training.continuous,
                                  denoise=config.sampling.noise_removal,
-                                 eps=eps,
-                                 device=config.device)
+                                 eps=eps)
   else:
     raise ValueError(f"Sampler name {sampler_name} unknown.")
 
@@ -217,7 +215,7 @@ class AncestralSamplingPredictor(Predictor):
     sde = self.sde
     timestep = (t * (sde.N - 1) / sde.T).long()
     sigma = sde.discrete_sigmas[timestep]
-    adjacent_sigma = torch.where(timestep == 0, torch.zeros_like(t), sde.discrete_sigmas.to(t.device)[timestep - 1])
+    adjacent_sigma = torch.where(timestep == 0, torch.zeros_like(t), sde.discrete_sigmas[timestep - 1])
     score = self.score_fn(x, t)
     x_mean = x + score * (sigma ** 2 - adjacent_sigma ** 2)[:, None, None, None]
     std = torch.sqrt((adjacent_sigma ** 2 * (sigma ** 2 - adjacent_sigma ** 2)) / (sigma ** 2))
@@ -228,7 +226,7 @@ class AncestralSamplingPredictor(Predictor):
   def vpsde_update_fn(self, x, t):
     sde = self.sde
     timestep = (t * (sde.N - 1) / sde.T).long()
-    beta = sde.discrete_betas.to(t.device)[timestep]
+    beta = sde.discrete_betas[timestep]
     score = self.score_fn(x, t)
     x_mean = (x + beta[:, None, None, None] * score) / torch.sqrt(1. - beta)[:, None, None, None]
     noise = torch.randn_like(x)
@@ -270,7 +268,7 @@ class LangevinCorrector(Corrector):
     target_snr = self.snr
     if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
       timestep = (t * (sde.N - 1) / sde.T).long()
-      alpha = sde.alphas.to(t.device)[timestep]
+      alpha = sde.alphas[timestep]
     else:
       alpha = torch.ones_like(t)
 
@@ -305,15 +303,15 @@ class AnnealedLangevinDynamics(Corrector):
       raise NotImplementedError(f"SDE class {sde.__class__.__name__} not yet supported.")
 
   def update_fn(self, x, t, y=None):
-    sde = self.sde
+    # sde = self.sde
     score_fn = self.score_fn
     n_steps = self.n_steps
     target_snr = self.snr
-    if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
-      timestep = (t * (sde.N - 1) / sde.T).long()
-      # alpha = sde.alphas.to(t.device)[timestep]
-    else:
-      alpha = torch.ones_like(t)
+    # if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
+    #   timestep = (t * (sde.N - 1) / sde.T).long()
+    #   # alpha = sde.alphas.to(t.device)[timestep]
+    # else:
+    #   alpha = torch.ones_like(t)
 
     if y is not None:
       batch = x, y
@@ -327,7 +325,7 @@ class AnnealedLangevinDynamics(Corrector):
       else:
         grad = score_fn(x, t)
       noise = torch.randn_like(x)
-      step_size = (target_snr * std) ** 2 * 2 #* alpha
+      step_size = ((target_snr * std) ** 2 * 2).to(grad.device) #* alpha
       x_mean = x + step_size[:, None, None, None] * grad
       x = x_mean + noise * torch.sqrt(step_size * 2)[:, None, None, None]
 
@@ -369,7 +367,7 @@ def shared_corrector_update_fn(x, t, sde, model, corrector, continuous, snr, n_s
 
 def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None,
                    n_steps=1, probability_flow=False, continuous=False,
-                   denoise=True, eps=1e-3, device='cuda'):
+                   denoise=True, eps=1e-3):
   """Create a Predictor-Corrector (PC) sampler.
 
   Args:
@@ -414,10 +412,10 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
     with torch.no_grad():
       if y is not None:
       # Initial sample
-        x = sde.prior_sampling(shape, y).to(device)
+        x = sde.prior_sampling(shape, y)
       else:
-        x = sde.prior_sampling(shape).to(device)
-      timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
+        x = sde.prior_sampling(shape)
+      timesteps = torch.linspace(sde.T, eps, sde.N)
 
       for i in range(sde.N):
         logging.debug(f"Sampling {i+1} / {sde.N}")
@@ -433,7 +431,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
 
 def get_ode_sampler(sde, shape, inverse_scaler, y=None,
                     denoise=False, rtol=1e-5, atol=1e-5,
-                    method='RK45', eps=1e-3, device='cuda'):
+                    method='RK45', eps=1e-3):
   """Probability flow ODE sampler with the black-box ODE solver.
 
   Args:
@@ -456,7 +454,7 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
     score_fn = get_score_fn(sde, model, train=False, continuous=True)
     # Reverse diffusion predictor for denoising
     predictor_obj = ReverseDiffusionPredictor(sde, score_fn, probability_flow=False)
-    vec_eps = torch.ones(x.shape[0], device=x.device) * eps
+    vec_eps = torch.ones(x.shape[0]) * eps
     _, x = predictor_obj.update_fn(x, vec_eps)
     return x
 
@@ -479,13 +477,13 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
       # Initial sample
       if z is None:
         # If not represent, sample the latent code from the prior distibution of the SDE.
-        x = sde.prior_sampling(shape).to(device)
+        x = sde.prior_sampling(shape)
       else:
         x = z
 
       def ode_func(t, x):
-        x = from_flattened_numpy(x, shape).to(device).type(torch.float32)
-        vec_t = torch.ones(shape[0], device=x.device) * t
+        x = from_flattened_numpy(x, shape)
+        vec_t = torch.ones(shape[0]) * t
         drift = drift_fn(model, x, vec_t)
         return to_flattened_numpy(drift)
 
@@ -493,7 +491,7 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
       solution = integrate.solve_ivp(ode_func, (sde.T, eps), to_flattened_numpy(x),
                                      rtol=rtol, atol=atol, method=method)
       nfe = solution.nfev
-      x = torch.tensor(solution.y[:, -1]).reshape(shape).to(device).type(torch.float32)
+      x = torch.tensor(solution.y[:, -1]).reshape(shape)
 
       # Denoising is equivalent to running one predictor step without adding noise
       if denoise:

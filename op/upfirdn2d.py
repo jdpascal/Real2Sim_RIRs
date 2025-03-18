@@ -192,7 +192,7 @@ def upfirdn2d_native(
     out = out.reshape(
         [-1, 1, in_h * up_y + pad_y0 + pad_y1, in_w * up_x + pad_x0 + pad_x1]
     )
-    w = torch.flip(kernel, [0, 1]).view(1, 1, kernel_h, kernel_w)
+    w = torch.flip(kernel, [0, 1]).view(1, 1, kernel_h, kernel_w).to(device=out.device)
     out = F.conv2d(out, w)
     out = out.reshape(
         -1,

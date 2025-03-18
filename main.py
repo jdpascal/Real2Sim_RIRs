@@ -93,7 +93,7 @@ def main():
     # Configure Fabric to take care of handling precision, parallelisation, etc
     # TODO: Make precision an argument or a config parameter
     fabric = Fabric(
-        precision="bf16-true",
+        precision="16-mixed",
         num_nodes=args.ddp_nodes,
         devices=args.ddp_devices_per_node,
     )
@@ -111,6 +111,9 @@ def main():
     # Charger la configuration depuis le fichier Python
     print("loading config")
     config = load_config(args.config)
+    
+    # Synchronise all processes before starting training or eval
+    # fabric.barrier()
 
     # Exécuter le pipeline en fonction du mode choisi
     if args.mode == "train":

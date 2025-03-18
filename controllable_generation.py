@@ -43,7 +43,7 @@ def get_pc_inpainter(sde, predictor, corrector, inverse_scaler, snr,
 
     def inpaint_update_fn(model, data, mask, x, t):
       with torch.no_grad():
-        vec_t = torch.ones(data.shape[0], device=data.device) * t
+        vec_t = torch.ones(data.shape[0]) * t
         x, x_mean = update_fn(x, vec_t, model=model)
         masked_data_mean, std = sde.marginal_prob(data, vec_t)
         masked_data = masked_data_mean + torch.randn_like(x) * std[:, None, None, None]
@@ -70,7 +70,7 @@ def get_pc_inpainter(sde, predictor, corrector, inverse_scaler, snr,
     """
     with torch.no_grad():
       # Initial sample
-      x = data * mask + sde.prior_sampling(data.shape).to(data.device) * (1. - mask)
+      x = data * mask + sde.prior_sampling(data.shape) * (1. - mask)
       timesteps = torch.linspace(sde.T, eps, sde.N)
       for i in range(sde.N):
         t = timesteps[i]
@@ -112,11 +112,11 @@ def get_pc_colorizer(sde, predictor, corrector, inverse_scaler,
 
   # Decouple a gray-scale image with `M`
   def decouple(inputs):
-    return torch.einsum('bihw,ij->bjhw', inputs, M.to(inputs.device))
+    return torch.einsum('bihw,ij->bjhw', inputs, M)
 
   # The inverse function to `decouple`.
   def couple(inputs):
-    return torch.einsum('bihw,ij->bjhw', inputs, invM.to(inputs.device))
+    return torch.einsum('bihw,ij->bjhw', inputs, invM)
 
   predictor_update_fn = functools.partial(shared_predictor_update_fn,
                                           sde=sde,
@@ -135,7 +135,7 @@ def get_pc_colorizer(sde, predictor, corrector, inverse_scaler,
 
     def colorization_update_fn(model, gray_scale_img, x, t):
       mask = get_mask(x)
-      vec_t = torch.ones(x.shape[0], device=x.device) * t
+      vec_t = torch.ones(x.shape[0]) * t
       x, x_mean = update_fn(x, vec_t, model=model)
       masked_data_mean, std = sde.marginal_prob(decouple(gray_scale_img), vec_t)
       masked_data = masked_data_mean + torch.randn_like(x) * std[:, None, None, None]
@@ -168,7 +168,7 @@ def get_pc_colorizer(sde, predictor, corrector, inverse_scaler,
       mask = get_mask(gray_scale_img)
       # Initial sample
       x = couple(decouple(gray_scale_img) * mask + \
-                 decouple(sde.prior_sampling(shape).to(gray_scale_img.device)
+                 decouple(sde.prior_sampling(shape)
                           * (1. - mask)))
       timesteps = torch.linspace(sde.T, eps, sde.N)
       for i in range(sde.N):

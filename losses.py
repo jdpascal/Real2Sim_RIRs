@@ -136,8 +136,8 @@ def get_smld_loss_fn(vesde, train, reduce_mean=False):
 
     def loss_fn(model, batch):
         model_fn = mutils.get_model_fn(model, train=train)
-        labels = torch.randint(0, vesde.N, (batch.shape[0],), device=batch.device)
-        sigmas = smld_sigma_array.to(batch.device)[labels]
+        labels = torch.randint(0, vesde.N, (batch.shape[0],))
+        sigmas = smld_sigma_array[labels]
         noise = torch.randn_like(batch) * sigmas[:, None, None, None]
         perturbed_data = noise + batch
         score = model_fn(perturbed_data, labels)
@@ -162,9 +162,9 @@ def get_ddpm_loss_fn(vpsde, train, reduce_mean=True):
 
     def loss_fn(model, batch):
         model_fn = mutils.get_model_fn(model, train=train)
-        labels = torch.randint(0, vpsde.N, (batch.shape[0],), device=batch.device)
-        sqrt_alphas_cumprod = vpsde.sqrt_alphas_cumprod.to(batch.device)
-        sqrt_1m_alphas_cumprod = vpsde.sqrt_1m_alphas_cumprod.to(batch.device)
+        labels = torch.randint(0, vpsde.N, (batch.shape[0],))
+        sqrt_alphas_cumprod = vpsde.sqrt_alphas_cumprod
+        sqrt_1m_alphas_cumprod = vpsde.sqrt_1m_alphas_cumprod
         noise = torch.randn_like(batch)
         perturbed_data = (
             sqrt_alphas_cumprod[labels, None, None, None] * batch
