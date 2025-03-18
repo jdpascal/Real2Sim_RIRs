@@ -173,7 +173,14 @@ class NCSNpp(nn.Module):
             raise ValueError(f"resblock type {resblock_type} unrecognized.")
 
         # modules.append(conv3x3(config.data.channels * 2, int(config.data.rir_samples_count / 2), stride=2))
-        modules.append(conv3x3(64, 512, stride=2))
+        stride_first_convolution = 4
+        modules.append(conv3x3(
+            config.data.channels * 2,
+            int(config.data.rir_samples_count / stride_first_convolution),
+            stride=stride_first_convolution,
+            kernel_size=(15,1),
+            padding=(7,0)
+        ))
 
         # Downsampling block
 
@@ -296,12 +303,12 @@ class NCSNpp(nn.Module):
 
         modules.append(
             nn.ConvTranspose2d(
-                512,
-                32,
+                int(config.data.rir_samples_count / stride_first_convolution),
+                config.data.channels,
                 kernel_size=(3, 1),
-                stride=(2, 1),
+                stride=(4, 1),
                 padding=(1, 0),
-                output_padding=(1, 0),
+                output_padding=(3, 0),
             )
         )
 
@@ -490,8 +497,9 @@ class NCSNpp(nn.Module):
             h = modules[m_idx](h)
             m_idx += 1
 
-        # print(h.shape)
         h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
+        print(h.shape)
+        logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
         h = modules[m_idx](h)
         m_idx += 1
         # print(h.shape)
@@ -502,4 +510,5 @@ class NCSNpp(nn.Module):
             used_sigmas = used_sigmas.reshape((x.shape[0], *([1] * len(x.shape[1:]))))
             h = h / used_sigmas
 
+        logging.debug(f"END SHAPE: {h.shape}")
         return h
