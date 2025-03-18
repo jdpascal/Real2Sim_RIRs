@@ -181,7 +181,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
 
         # Si le dataset contient des clés spécifiques (ex. 'perfect_rir' et 'real_rir'), on les traite.
         if "perfect_rir" in batch and "real_rir" in batch:
-            logging.info("loading perfect rir")
             perfect_rir = batch["perfect_rir"].to(config.device, dtype=torch.float32)
             # print("perfect_rir.shape", perfect_rir.shape)
             # Si nécessaire, ajuster l'ordre des dimensions (ex. HWC -> CHW)
@@ -190,16 +189,12 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 and perfect_rir.shape[-1] != config.data.num_channels
             ):
                 perfect_rir = perfect_rir.permute(0, 2, 3, 1)
-            logging.info("loading real rir")
             real_rir = batch["real_rir"].to(config.device, dtype=torch.float32)
             # print("perfect_rir.shape", perfect_rir.shape)
             # print("real_rir.shape", real_rir.shape)
             if real_rir.ndim == 4 and real_rir.shape[-1] != config.data.num_channels:
                 real_rir = real_rir.permute(0, 2, 3, 1)
             # print("real_rir.shape", real_rir.shape)
-            logging.info("setting current batch")
-            logging.info(f"perfect_rir: {perfect_rir.size()}")
-            logging.info(f"real_rir: {real_rir.size()}")
             current_batch = (perfect_rir, real_rir)
         else:
             # Pour un dataset classique avec la clé 'image'.

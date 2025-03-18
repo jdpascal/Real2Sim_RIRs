@@ -498,7 +498,7 @@ class NCSNpp(nn.Module):
             m_idx += 1
 
         h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
-        print(h.shape)
+        # print(h.shape)
         logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
         h = modules[m_idx](h)
         m_idx += 1
