@@ -1,4 +1,0 @@
-ml-collections==0.1.0
-torch
-absl-py==0.10.0
-ninja

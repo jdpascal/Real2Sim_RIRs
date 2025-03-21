@@ -1,235 +1,284 @@
-# coding=utf-8
-# Copyright 2020 The Google Research Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+import logging
+import os
+import numpy as np
+from PIL import Image
+import json
+import torch
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms, datasets
+from pathlib import Path
 
-# pylint: skip-file
-"""Return training and evaluation/test datasets from config files."""
-import jax
-import tensorflow as tf
-import tensorflow_datasets as tfds
-
-
+# -------------------------
+# Fonctions de normalisation
+# -------------------------
 def get_data_scaler(config):
-  """Data normalizer. Assume data are always in [0, 1]."""
-  if config.data.centered:
-    # Rescale to [-1, 1]
-    return lambda x: x * 2. - 1.
-  else:
-    return lambda x: x
-
+    """Normalise les données dans [0, 1] vers [-1, 1] si demandé."""
+    if config.data.centered:
+        return lambda x: x * 2 - 1
+    else:
+        return lambda x: x
 
 def get_data_inverse_scaler(config):
-  """Inverse data normalizer."""
-  if config.data.centered:
-    # Rescale [-1, 1] to [0, 1]
-    return lambda x: (x + 1.) / 2.
-  else:
-    return lambda x: x
+    """Inverse de la normalisation."""
+    if config.data.centered:
+        return lambda x: (x + 1) / 2
+    else:
+        return lambda x: x
 
-
+# -------------------------
+# Fonctions de recadrage/redimensionnement
+# -------------------------
 def crop_resize(image, resolution):
-  """Crop and resize an image to the given resolution."""
-  crop = tf.minimum(tf.shape(image)[0], tf.shape(image)[1])
-  h, w = tf.shape(image)[0], tf.shape(image)[1]
-  image = image[(h - crop) // 2:(h + crop) // 2,
-          (w - crop) // 2:(w + crop) // 2]
-  image = tf.image.resize(
-    image,
-    size=(resolution, resolution),
-    antialias=True,
-    method=tf.image.ResizeMethod.BICUBIC)
-  return tf.cast(image, tf.uint8)
+    """
+    Recadre au centre une image PIL pour obtenir un carré de taille minimale,
+    puis la redimensionne à (resolution, resolution) avec interpolation bicubique.
+    """
+    w, h = image.size
+    crop_size = min(w, h)
+    left = (w - crop_size) // 2
+    top = (h - crop_size) // 2
+    right = left + crop_size
+    bottom = top + crop_size
+    image = image.crop((left, top, right, bottom))
+    return image.resize((resolution, resolution), resample=Image.BICUBIC)
 
-
-def resize_small(image, resolution):
-  """Shrink an image to the given resolution."""
-  h, w = image.shape[0], image.shape[1]
-  ratio = resolution / min(h, w)
-  h = tf.round(h * ratio, tf.int32)
-  w = tf.round(w * ratio, tf.int32)
-  return tf.image.resize(image, [h, w], antialias=True)
-
-
-def central_crop(image, size):
-  """Crop the center of an image to the given size."""
-  top = (image.shape[0] - size) // 2
-  left = (image.shape[1] - size) // 2
-  return tf.image.crop_to_bounding_box(image, top, left, size, size)
-
-
-def get_dataset(config, uniform_dequantization=False, evaluation=False):
-  """Create data loaders for training and evaluation.
-
-  Args:
-    config: A ml_collection.ConfigDict parsed from config files.
-    uniform_dequantization: If `True`, add uniform dequantization to images.
-    evaluation: If `True`, fix number of epochs to 1.
-
-  Returns:
-    train_ds, eval_ds, dataset_builder.
-  """
-  # Compute batch size for this worker.
-  batch_size = config.training.batch_size if not evaluation else config.eval.batch_size
-  if batch_size % jax.device_count() != 0:
-    raise ValueError(f'Batch sizes ({batch_size} must be divided by'
-                     f'the number of devices ({jax.device_count()})')
-
-  # Reduce this when image resolution is too large and data pointer is stored
-  shuffle_buffer_size = 10000
-  prefetch_size = tf.data.experimental.AUTOTUNE
-  num_epochs = None if not evaluation else 1
-
-  # Create dataset builders for each dataset.
-  if config.data.dataset == 'CIFAR10':
-    dataset_builder = tfds.builder('cifar10')
-    train_split_name = 'train'
-    eval_split_name = 'test'
-
-    def resize_op(img):
-      img = tf.image.convert_image_dtype(img, tf.float32)
-      return tf.image.resize(img, [config.data.image_size, config.data.image_size], antialias=True)
+# -------------------------
+# Dataset personnalisé pour MultiRIR
+# -------------------------
+class MultiRIRDataset(Dataset):
     
-  elif config.data.dataset == 'MultiRIR':
-        # Ici, on charge directement le fichier NPZ qui contient vos arrays "X" et "Y"
-        npz_path = config.data.npz_path  # Par exemple, "path/to/MultiRIR.npz"
-        if not os.path.exists(npz_path):
-          raise ValueError(f"Le fichier NPZ {npz_path} n'existe pas.")
-        multi_rir_data = np.load(npz_path)
-        X = multi_rir_data['perfect_rir']  # Array contenant les entrées
-        Y = multi_rir_data['real_rir']  # Array contenant les sorties
-        # Optionnellement, on peut avoir un array "condition"
-        condition = multi_rir_data['condition'] if 'condition' in multi_rir_data.files else None
-
-        # Création d'un tf.data.Dataset à partir des arrays NumPy.
-        if condition is not None:
-          ds = tf.data.Dataset.from_tensor_slices({
-              'perfect_rir': X,  # Ici "image" correspond à vos entrées X
-              'real_rir': Y,
-              'condition': condition
-          })
-        else:
-          ds = tf.data.Dataset.from_tensor_slices({
-              'perfect_rir': X,
-              'real_rir': Y
-          })
+    def __init__(self, root_dir: str, config, mode="train", transform=None):
+        self.root_dir = root_dir
+        self.config = config
+        self.mode = mode
+        self.transform = transform
         
-        # Option de répéter le dataset sur plusieurs époques
-        ds = ds.repeat(count=num_epochs)
-        # On peut appliquer un mélange et un batching
-        ds = ds.shuffle(shuffle_buffer_size)
-        ds = ds.batch(batch_size, drop_remainder=True)
-        ds = ds.prefetch(prefetch_size)
+        total = config.data.num_room * config.data.pos_per_room
+        train_max_index = int(total * 0.8)
+        
+        if mode == "train":
+            self.indices = np.arange(stop=train_max_index)
+        else:
+            self.indices = np.arange(start=train_max_index, stop=total)
+        
+    def __len__(self):
+        return len(self.indices)
+        
+    def __getitem__(self, idx):
+        room_index = self.indices[idx]
+        
+        # Get room number and position number from room index using euclidean division
+        room_number = int(room_index / self.config.data.pos_per_room)
+        pos_number = room_index % self.config.data.pos_per_room
+        room_filename = f"room_{room_number}_{pos_number}.json"
 
-        # Ici, on réalise une séparation train/eval manuelle (par exemple 80% train, 20% eval)
-        dataset_size = X.shape[0]
-        train_size = int(0.8 * dataset_size)
-        # Note : le shuffle a déjà été appliqué
-        train_ds = ds.take(train_size)
-        eval_ds = ds.skip(train_size)
-        return train_ds, eval_ds, None
+        with open(Path(self.root_dir) / room_filename, 'r') as json_file:
+            room_data = json.load(json_file)
+            sample = {
+                'perfect_rir': np.array(room_data['perfect_rir'])[:,:self.config.data.rir_samples_count],
+                'real_rir': np.array(room_data['real_rir'])[:,:self.config.data.rir_samples_count],
+            }
 
-  elif config.data.dataset == 'SVHN':
-    dataset_builder = tfds.builder('svhn_cropped')
-    train_split_name = 'train'
-    eval_split_name = 'test'
+        if self.transform:
+            sample = self.transform(sample)
+        else:
+            # Reshape data, although this could (should?) be done using a Transform
+            # https://pytorch.org/tutorials/beginner/data_loading_tutorial.html#transforms
+            sample['perfect_rir'] = sample['perfect_rir'][:, None, :].astype(np.float32)
+            sample['real_rir'] = sample['real_rir'][:, None, :].astype(np.float32)
 
-    def resize_op(img):
-      img = tf.image.convert_image_dtype(img, tf.float32)
-      return tf.image.resize(img, [config.data.image_size, config.data.image_size], antialias=True)
+        return sample
 
-  elif config.data.dataset == 'CELEBA':
-    dataset_builder = tfds.builder('celeb_a')
-    train_split_name = 'train'
-    eval_split_name = 'validation'
+# class MultiRIRDataset(Dataset):
+#     def __init__(self, npz_path, split='train', config=None, transform=None):
+#         if not os.path.exists(npz_path):
+#             raise ValueError(f"Le fichier NPZ {npz_path} n'existe pas.")
+        
+#         # data = {'real_rir': [], 'perfect_rir': []}
+#         # for room_index in range(config.data.num_room):
+#         #     for position_index in range(config.data.pos_per_room):
+#         #         with open(npz_path  + f"room_{room_index}_{position_index}.json", 'r') as json_file:
+#         #             data_room = json.load(json_file)
+#         #             data['real_rir'].append(data_room['real_rir'])
+#         #             data['perfect_rir'].append(data_room['perfect_rir'])
+#         #             # data['condition'].append(data_room['condition'])  if 'condition' in data_room.keys() else None
 
-    def resize_op(img):
-      img = tf.image.convert_image_dtype(img, tf.float32)
-      img = central_crop(img, 140)
-      img = resize_small(img, config.data.image_size)
-      return img
+#         with open(npz_path + "data.json", "r") as json_file:
+#             data = json.load(json_file)
+        
+#         self.X = data['perfect_rir']
+#         self.Y = data['real_rir']
+#         self.condition = data['condition'] if 'condition' in data.keys() else None
 
-  elif config.data.dataset == 'LSUN':
-    dataset_builder = tfds.builder(f'lsun/{config.data.category}')
-    train_split_name = 'train'
-    eval_split_name = 'validation'
+#         total = len(self.X)
+#         split_idx = int(0.8 * total)  # 80% pour l'entraînement, 20% pour l'évaluation
+#         if split == 'train':
+#             self.indices = np.arange(split_idx)
+#         else:
+#             self.indices = np.arange(split_idx, total)
 
-    if config.data.image_size == 128:
-      def resize_op(img):
-        img = tf.image.convert_image_dtype(img, tf.float32)
-        img = resize_small(img, config.data.image_size)
-        img = central_crop(img, config.data.image_size)
-        return img
+#         self.transform = transform
+
+#     def __len__(self):
+#         return len(self.indices)
+
+#     def __getitem__(self, idx):
+#         i = self.indices[idx]
+#         sample = {
+#             'perfect_rir': self.X[i],
+#             'real_rir': self.Y[i]
+#         }
+#         if self.condition is not None:
+#             sample['condition'] = self.condition[i]
+#         if self.transform:
+#             sample = self.transform(sample)
+#         else:
+#             # Conversion basique en tenseurs
+#             sample['perfect_rir'] = torch.FloatTensor(sample['perfect_rir'])
+#             sample['real_rir'] = torch.FloatTensor(sample['real_rir'])
+#             sample['perfect_rir'] = sample['perfect_rir'][:, None, :]
+#             sample['real_rir'] = sample['real_rir'][:, None, :]
+#             if 'condition' in sample:
+#                 sample['condition'] = torch.FloatTensor(sample['condition'])
+#         return sample
+
+# -------------------------
+# Fonction principale pour créer les DataLoaders
+# -------------------------
+def get_dataset(config, uniform_dequantization=False, evaluation=False):
+    """
+    Crée des DataLoaders pour l'entraînement et l'évaluation.
+
+    Args:
+        config: Objet de configuration contenant les paramètres (ex. config.data.dataset, config.data.image_size, etc.)
+        uniform_dequantization: Si True, ajoute du bruit uniforme aux images.
+        evaluation: Si True, utilise les paramètres d'évaluation (ex. désactivation des augmentations).
+
+    Returns:
+        train_loader, eval_loader, dataset_builder (None ici)
+    """
+    # Calcul du batch_size
+    batch_size = config.training.batch_size if not evaluation else config.eval.batch_size
+    # batch_size = 64
+    n_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    if batch_size % n_devices != 0:
+        raise ValueError(f"Le batch size ({batch_size}) doit être divisible par le nombre de devices ({n_devices}).")
+
+    # Fonction utilitaire pour éventuellement ajouter la déquantification uniforme
+    def maybe_dequantize():
+        if uniform_dequantization:
+            return transforms.Lambda(lambda x: (x * 255 + torch.rand_like(x)) / 256)
+        else:
+            return transforms.Lambda(lambda x: x)
+
+    # En fonction du dataset, on définit les transformations et on crée le dataset
+    if config.data.dataset == 'CIFAR10':
+        transform_list = [
+            transforms.Resize((config.data.image_size, config.data.image_size),
+                              interpolation=transforms.InterpolationMode.BICUBIC)
+        ]
+        if config.data.random_flip and not evaluation:
+            transform_list.append(transforms.RandomHorizontalFlip())
+        transform_list.extend([
+            transforms.ToTensor(),
+            maybe_dequantize()
+        ])
+        transform = transforms.Compose(transform_list)
+        train_dataset = datasets.CIFAR10(root=config.data.data_dir,
+                                         train=True, transform=transform, download=True)
+        eval_dataset = datasets.CIFAR10(root=config.data.data_dir,
+                                        train=False, transform=transform, download=True)
+
+    elif config.data.dataset == 'SVHN':
+        transform_list = [
+            transforms.Resize((config.data.image_size, config.data.image_size),
+                              interpolation=transforms.InterpolationMode.BICUBIC)
+        ]
+        if config.data.random_flip and not evaluation:
+            transform_list.append(transforms.RandomHorizontalFlip())
+        transform_list.extend([
+            transforms.ToTensor(),
+            maybe_dequantize()
+        ])
+        transform = transforms.Compose(transform_list)
+        train_dataset = datasets.SVHN(root=config.data.data_dir,
+                                      split='train', transform=transform, download=True)
+        eval_dataset = datasets.SVHN(root=config.data.data_dir,
+                                     split='test', transform=transform, download=True)
+
+    elif config.data.dataset == 'CELEBA':
+        transform_list = [
+            transforms.CenterCrop(140),
+            transforms.Resize((config.data.image_size, config.data.image_size),
+                              interpolation=transforms.InterpolationMode.BICUBIC)
+        ]
+        if config.data.random_flip and not evaluation:
+            transform_list.append(transforms.RandomHorizontalFlip())
+        transform_list.extend([
+            transforms.ToTensor(),
+            maybe_dequantize()
+        ])
+        transform = transforms.Compose(transform_list)
+        train_dataset = datasets.CelebA(root=config.data.data_dir,
+                                        split='train', transform=transform, download=True)
+        eval_dataset = datasets.CelebA(root=config.data.data_dir,
+                                       split='valid', transform=transform, download=True)
+
+    elif config.data.dataset == 'LSUN':
+        # Pour LSUN, le paramètre config.data.category doit être défini (ex. 'bedroom')
+        if config.data.image_size == 128:
+            transform = transforms.Compose([
+                transforms.Resize(128),
+                transforms.CenterCrop(128),
+                transforms.ToTensor(),
+                maybe_dequantize()
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Lambda(lambda img: crop_resize(img, config.data.image_size)),
+                transforms.ToTensor(),
+                maybe_dequantize()
+            ])
+        train_dataset = datasets.LSUN(root=config.data.data_dir,
+                                      classes=[config.data.category], transform=transform, split='train')
+        eval_dataset = datasets.LSUN(root=config.data.data_dir,
+                                     classes=[config.data.category], transform=transform, split='val')
+
+    elif config.data.dataset == 'MultiRIR':
+        # On charge le fichier NPZ et on crée un dataset personnalisé.
+        train_dataset = MultiRIRDataset(
+            root_dir=config.data.npz_path,
+            config=config,
+            mode="train",
+        )
+        eval_dataset = MultiRIRDataset(
+            root_dir=config.data.npz_path,
+            config=config,
+            mode="eval",
+        )
+
+    elif config.data.dataset in ['FFHQ', 'CelebAHQ']:
+        raise NotImplementedError(f"Le dataset {config.data.dataset} n'est pas encore implémenté pour PyTorch.")
 
     else:
-      def resize_op(img):
-        img = crop_resize(img, config.data.image_size)
-        img = tf.image.convert_image_dtype(img, tf.float32)
-        return img
+        raise NotImplementedError(f"Dataset {config.data.dataset} non supporté.")
 
-  elif config.data.dataset in ['FFHQ', 'CelebAHQ']:
-    dataset_builder = tf.data.TFRecordDataset(config.data.tfrecords_path)
-    train_split_name = eval_split_name = 'train'
+    # Création des DataLoaders
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+        drop_last=True,
+        pin_memory=True,
+    )
+    eval_loader = DataLoader(
+        eval_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=4,
+        drop_last=True,
+        pin_memory=True
+    )
 
-  else:
-    raise NotImplementedError(
-      f'Dataset {config.data.dataset} not yet supported.')
-
-  # Customize preprocess functions for each dataset.
-  if config.data.dataset in ['FFHQ', 'CelebAHQ']:
-    def preprocess_fn(d):
-      sample = tf.io.parse_single_example(d, features={
-        'shape': tf.io.FixedLenFeature([3], tf.int64),
-        'data': tf.io.FixedLenFeature([], tf.string)})
-      data = tf.io.decode_raw(sample['data'], tf.uint8)
-      data = tf.reshape(data, sample['shape'])
-      data = tf.transpose(data, (1, 2, 0))
-      img = tf.image.convert_image_dtype(data, tf.float32)
-      if config.data.random_flip and not evaluation:
-        img = tf.image.random_flip_left_right(img)
-      if uniform_dequantization:
-        img = (tf.random.uniform(img.shape, dtype=tf.float32) + img * 255.) / 256.
-      return dict(image=img, label=None)
-
-  else:
-    def preprocess_fn(d):
-      """Basic preprocessing function scales data to [0, 1) and randomly flips."""
-      img = resize_op(d['image'])
-      if config.data.random_flip and not evaluation:
-        img = tf.image.random_flip_left_right(img)
-      if uniform_dequantization:
-        img = (tf.random.uniform(img.shape, dtype=tf.float32) + img * 255.) / 256.
-
-      return dict(image=img, label=d.get('label', None))
-
-  def create_dataset(dataset_builder, split):
-    dataset_options = tf.data.Options()
-    dataset_options.experimental_optimization.map_parallelization = True
-    dataset_options.experimental_threading.private_threadpool_size = 48
-    dataset_options.experimental_threading.max_intra_op_parallelism = 1
-    read_config = tfds.ReadConfig(options=dataset_options)
-    if isinstance(dataset_builder, tfds.core.DatasetBuilder):
-      dataset_builder.download_and_prepare()
-      ds = dataset_builder.as_dataset(
-        split=split, shuffle_files=True, read_config=read_config)
-    else:
-      ds = dataset_builder.with_options(dataset_options)
-    ds = ds.repeat(count=num_epochs)
-    ds = ds.shuffle(shuffle_buffer_size)
-    ds = ds.map(preprocess_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    ds = ds.batch(batch_size, drop_remainder=True)
-    return ds.prefetch(prefetch_size)
-
-  train_ds = create_dataset(dataset_builder, train_split_name)
-  eval_ds = create_dataset(dataset_builder, eval_split_name)
-  return train_ds, eval_ds, dataset_builder
+    return train_loader, eval_loader, None

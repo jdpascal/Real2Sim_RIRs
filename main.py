@@ -9,7 +9,7 @@ from pathlib import Path
 import ml_collections
 from lightning import Fabric
 
-import run_lib_jd as run_lib
+import run_lib
 
 
 def load_config(config_path) -> ml_collections.ConfigDict:

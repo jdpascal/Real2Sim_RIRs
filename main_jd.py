@@ -16,7 +16,7 @@
 """Training and evaluation"""
 """Training and evaluation"""
 
-import run_lib_jd as run_lib
+import run_lib
 import argparse
 import json
 import logging
