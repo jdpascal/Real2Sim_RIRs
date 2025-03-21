@@ -42,6 +42,7 @@ def get_config() -> ml_collections.ConfigDict:
     training.likelihood_weighting = False
     training.continuous = True
     training.reduce_mean = False
+    training.sde = "ouvesde"
 
     # sampling
     config.sampling = sampling = ml_collections.ConfigDict()
@@ -49,6 +50,9 @@ def get_config() -> ml_collections.ConfigDict:
     sampling.noise_removal = True
     sampling.probability_flow = False
     sampling.snr = 0.075
+    sampling.method = "pc"
+    sampling.predictor = "none"
+    sampling.corrector = "ald"
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
@@ -69,11 +73,11 @@ def get_config() -> ml_collections.ConfigDict:
     data.dataset = "MultiRIR"
     data.image_size = 256
     data.channels = 32
-    data.rir_samples_count = 1024
+    data.rir_samples_count = 512
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_2/"
-    data.num_room = 512
+    data.num_room = 4
     data.pos_per_room = 4
 
     # model
@@ -108,8 +112,8 @@ def get_config() -> ml_collections.ConfigDict:
     model.init_scale = 0.0
     model.fourier_scale = 16
     model.conv_size = 3
-    model.dropout = 0.0
-    model.embedding_type = "fourier"
+
+
 
     # optimization
     config.optim = optim = ml_collections.ConfigDict()
@@ -129,13 +133,5 @@ def get_config() -> ml_collections.ConfigDict:
     else:
         config.device = torch.device("cpu")
 
-    # training
-    training.sde = "ouvesde"
-    training.continuous = True
-
-    # sampling
-    sampling.method = "pc"
-    sampling.predictor = "none"
-    sampling.corrector = "ald"
 
     return config

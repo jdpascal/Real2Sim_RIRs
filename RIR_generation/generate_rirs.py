@@ -18,14 +18,14 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 1024
+num_room = 64
 positions_per_room = 4
 distance_src_mics = 1
 dist_mur = 1
 max_order_ism = 10
 delay = 83
 limit = 1024
-crop_start = 0
+crop_start = 50
 
 # Coefficient of absorption more real, per octave band, per walls
 abs_coeffs_lower_bound = np.array(
@@ -68,7 +68,9 @@ def calculate_rirs_for_config(
     # Orientation
     cartesian_coords = pos_mics - pos_src
     r, theta, phi = fun.cartesian_to_spherical(cartesian_coords)
-    orientation = Rotation3D([theta - 90, phi + 180], "yz", degrees=True)
+    orientation = Rotation3D([theta , phi], "zy", degrees=True)
+    theta_mic, phi_mic = fun.random_angles()
+    orientation_mic = Rotation3D([theta_mic, phi_mic], "zy", degrees=True)
     # dir = DirectionVector(theta, phi)
 
     # Pick random coefficient for absorption but realistic
@@ -133,7 +135,7 @@ def calculate_rirs_for_config(
     list_dir = []
     for j in range(32):
         dir_obj_Emic = eigenmike.get_mic_directivity(
-            f"EM_32_{j}", orientation=orientation
+            f"EM_32_{j}", orientation=orientation_mic
         )
         list_dir.append(dir_obj_Emic)
     room_real.add_microphone_array(
@@ -280,8 +282,9 @@ def main():
         # Generate #positions_per_room mesures in the room
         for position_index in range(positions_per_room):
             # Generate 2 random points in the room, with constraints on location
+            approx = fun.approximation_distance(0.1)
             pos_src, pos_mics = fun.generate_random_points(
-                Dx, Dy, Dz, distance_src_mics, dist_mur
+                Dx, Dy, Dz, distance_src_mics + approx, dist_mur
             )
             configurations.append(
                 (
