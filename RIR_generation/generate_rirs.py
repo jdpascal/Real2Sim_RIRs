@@ -213,9 +213,11 @@ def calculate_rirs_for_config(
     real_rir = test_real[:, crop_start + delay : crop_start + limit + delay] / np.max(
         test_real[:, crop_start + delay : crop_start + limit + delay], axis=1
     ).reshape(-1, 1)
+    real_rir = real_rir / np.max( np.abs(real_rir) )
     perfect_rir = test_perfect[:, crop_start : crop_start + limit] / np.max(
         test_perfect[:, crop_start : crop_start + limit], axis=1
     ).reshape(-1, 1)
+    perfect_rir = perfect_rir / np.max( np.abs(perfect_rir) )
     # Store all calculated values for this configuration in a dict
     # We need to use tolist() here to convert from numpy arrays to python arrays that can be serialized to json
     room_data = {
