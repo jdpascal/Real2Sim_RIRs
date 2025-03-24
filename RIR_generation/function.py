@@ -116,16 +116,21 @@ def cartesian_to_spherical(cartesian_coords):
 
     return r, theta_deg, phi_deg
 
+# def random_angles():
+#     rand_i, rand_j = np.random.rand(
+#         2
+#     )  # Two independent random numbers from a uniform distribution in the range (0, 1)
+#     theta = 2 * np.pi * rand_i  # Spherical coordinate theta
+#     phi = np.arccos(
+#         2 * rand_j - 1
+#     )  # Spherical coordinate phi, corrected for distribution bias
+#     return (np.degrees(theta), np.degrees(phi))
+
 
 def random_angles():
-    rand_i, rand_j = np.random.rand(
-        2
-    )  # Two independent random numbers from a uniform distribution in the range (0, 1)
-    theta = 2 * np.pi * rand_i  # Spherical coordinate theta
-    phi = np.arccos(
-        2 * rand_j - 1
-    )  # Spherical coordinate phi, corrected for distribution bias
-    return (np.degrees(theta), np.degrees(phi))
+    rand_x, rand_y, rand_z = np.random.rand(3)                  # three independent random numbers from a uniform distribution in the range (0, 1)
+    theta, phi = cartesian_to_spherical([rand_x, rand_y, rand_z])[1:] # Spherical coordinate theta and phi
+    return( theta, phi )
 
 
 def approximation_distance(more_or_less=0.1):
