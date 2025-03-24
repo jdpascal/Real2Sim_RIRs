@@ -65,9 +65,9 @@ def calculate_rirs_for_config(
     """
     Calculates RIRs for the given configuration and writes result to an output JSON file.
     """
-    # Orientation
+    # Orientation, test with source turn his back to the mics
     cartesian_coords = pos_mics - pos_src
-    r, theta, phi = fun.cartesian_to_spherical(cartesian_coords)
+    r, theta, phi = fun.cartesian_to_spherical(-cartesian_coords) # remove the "-" to have the source facing the mics
     orientation = Rotation3D([theta , phi], "zy", degrees=True)
     theta_mic, phi_mic = fun.random_angles()
     orientation_mic = Rotation3D([theta_mic, phi_mic], "zy", degrees=True)
