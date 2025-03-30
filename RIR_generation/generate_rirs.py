@@ -18,8 +18,8 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 64
-positions_per_room = 4
+num_room = 32
+positions_per_room = 10
 distance_src_mics = 1
 dist_mur = 1
 max_order_ism = 10

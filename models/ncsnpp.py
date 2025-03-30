@@ -173,7 +173,7 @@ class NCSNpp(nn.Module):
             raise ValueError(f"resblock type {resblock_type} unrecognized.")
 
         # modules.append(conv3x3(config.data.channels * 2, int(config.data.rir_samples_count / 2), stride=2))
-        stride_first_convolution = 4
+        stride_first_convolution = self.config.data.first_stride_convolution
         modules.append(conv3x3(
             config.data.channels * 2,
             int(config.data.rir_samples_count / stride_first_convolution),
@@ -348,10 +348,12 @@ class NCSNpp(nn.Module):
             # If input data is in [0, 1]
             x = 2 * x - 1.0
 
-        x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
+        # x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
+        x = x.permute(0, 3, 2, 1)
         x = modules[m_idx](x)
         m_idx += 1
-        x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
+        # x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
+        x = x.permute(0, 3, 2, 1)
 
         # Downsampling block
         
@@ -497,13 +499,15 @@ class NCSNpp(nn.Module):
             h = modules[m_idx](h)
             m_idx += 1
 
-        h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
+        # h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
+        h = h.permute(0, 3, 2, 1)
         # print(h.shape)
         logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
         h = modules[m_idx](h)
         m_idx += 1
         # print(h.shape)
-        h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
+        # h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
+        h = h.permute(0, 3, 2, 1)
         # print(h.shape)
         assert m_idx == len(modules)
         if self.config.model.scale_by_sigma:
