@@ -108,7 +108,7 @@ def cartesian_to_spherical(cartesian_coords):
     theta = np.arctan2(y, x)  # Utilise np.arctan2 pour éviter les problèmes de signes
 
     # Calcul de l'élévation (angle avec l'axe Z)
-    phi = np.arccos(z / r) if r != 0 else 0  # Si r = 0, on évite une division par zéro
+    phi = np.arccos(z / r) if r.all() != 0 else 0  # Si r = 0, on évite une division par zéro
 
     # Conversion des angles en degrés
     theta_deg = np.degrees(theta)
