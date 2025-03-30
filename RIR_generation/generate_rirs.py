@@ -158,7 +158,7 @@ def calculate_rirs_for_config(
     # Turn the position of the mics to be the same as the Eigenmike turned
     list_pos = []
     for i in range(32):
-        new_pos = orientation_mics.rotate(pos_eigenmike.T[i])
+        new_pos = orientation_mic.rotate(pos_eigenmike.T[i])
         list_pos.append(np.array(new_pos))
     room_perfect.add_microphone_array((list_pos + pos_mics).T) 
     # room_perfect.add_microphone_array((pos_eigenmike.T + pos_mics).T)
