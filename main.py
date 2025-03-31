@@ -79,6 +79,14 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Number of devices on one node",
     )
+    parser.add_argument(
+        "--precision",
+        dest="precision",
+        type=str,
+        default="16-mixed",
+        choices=["bf16-mixed", "16-mixed", "16-true", "32-true"],
+        help="Precision souhaitee, bf = brain float",
+    )
     return parser.parse_args()
 
 
@@ -89,15 +97,11 @@ def main():
     
     # Parse input arguments
     args = parse_args()
-
-    # Charger la configuration depuis le fichier Python
-    print("loading config")
-    config = load_config(args.config)
     
     # Configure Fabric to take care of handling precision, parallelisation, etc
     # TODO: Make precision an argument or a config parameter
     fabric = Fabric(
-        precision=config.precision,
+        precision=args.precision,
         num_nodes=args.ddp_nodes,
         devices=args.ddp_devices_per_node,
     )
@@ -112,7 +116,9 @@ def main():
     # Création du répertoire de travail
     os.makedirs(args.workdir, exist_ok=True)
 
-
+    # Charger la configuration depuis le fichier Python
+    print("loading config")
+    config = load_config(args.config)
     
     # Synchronise all processes before starting training or eval
     # fabric.barrier()

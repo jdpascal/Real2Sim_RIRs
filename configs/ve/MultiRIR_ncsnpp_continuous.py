@@ -31,10 +31,10 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 16
-    training.n_iters = 30
-    training.snapshot_freq = 25
-    training.log_freq = 5
-    training.eval_freq = 5
+    training.n_iters = 3000
+    training.snapshot_freq = 500
+    training.log_freq = 500
+    training.eval_freq = 500
     ## store additional checkpoints for preemption in cloud computing environments
     training.snapshot_freq_for_preemption = 5000
     ## produce samples at each snapshot.
@@ -97,7 +97,7 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"
     model.nf = int(data.rir_samples_count / 8)
-    model.ch_mult = (1, 1, 1, 2, 2)
+    model.ch_mult = (1, 1, 1, 2, 2, 2)
     model.num_res_blocks = 3
     # model.attn_resolutions = (32,)
     model.attn_resolutions = (16,)
@@ -134,10 +134,6 @@ def get_config() -> ml_collections.ConfigDict:
         config.device = torch.device("mps")
     else:
         config.device = torch.device("cpu")
-    
-    config.precision = "32-true"
-
-    ## "bf16-mixed"  "16-mixed"   "16-true"
 
 
     return config
