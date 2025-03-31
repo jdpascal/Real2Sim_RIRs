@@ -284,7 +284,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 plt.ioff()
                 num_channels = min(32, perfect_rir_sample.shape[1])
                 fig, axes = plt.subplots(
-                    nrows=num_channels, ncols=1, sharex=True, figsize=(6, 12)
+                    nrows=num_channels, ncols=1, sharex=True, figsize=(6, 12), layout='constrained'
                 )
                 for c in range(num_channels):
                     # Puisque ce sont des signaux 1D, on les trace directement.
@@ -299,7 +299,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 axes[-1].set_xlabel("Time")
                 axes[-1].legend()
                 fig.suptitle("Signal per channels")
-                fig.tight_layout()
+                # fig.tight_layout()
                 fig.subplots_adjust(hspace=0)
                 writer.add_figure(f"sample_at_step_{step}", fig)
                 plt.close()

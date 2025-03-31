@@ -30,8 +30,8 @@ def get_config() -> ml_collections.ConfigDict:
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 4
-    training.n_iters = 10
+    training.batch_size = 16
+    training.n_iters = 30
     training.snapshot_freq = 25
     training.log_freq = 5
     training.eval_freq = 5
@@ -71,7 +71,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.rir_samples_count = 128
+    data.rir_samples_count = 256
     #### don't touch first stride convolution
     data.first_stride_convolution = 4
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
@@ -79,8 +79,8 @@ def get_config() -> ml_collections.ConfigDict:
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_2/"
-    data.num_room = 4
-    data.pos_per_room = 4
+    data.num_room = 32
+    data.pos_per_room = 10
 
     # model
     config.model = model = ml_collections.ConfigDict()
@@ -89,7 +89,7 @@ def get_config() -> ml_collections.ConfigDict:
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    model.sigma_max = 348
+    model.sigma_max = 2
     model.sigma_min = 0.5
     model.num_scales = 100
     model.scale_by_sigma = True
@@ -97,8 +97,8 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"
     model.nf = int(data.rir_samples_count / 8)
-    model.ch_mult = (1, 1, 1)
-    model.num_res_blocks = 2
+    model.ch_mult = (1, 1, 1, 2, 2)
+    model.num_res_blocks = 3
     # model.attn_resolutions = (32,)
     model.attn_resolutions = (16,)
     model.resamp_with_conv = True
@@ -134,6 +134,10 @@ def get_config() -> ml_collections.ConfigDict:
         config.device = torch.device("mps")
     else:
         config.device = torch.device("cpu")
+    
+    config.precision = "32-true"
+
+    ## "bf16-mixed"  "16-mixed"   "16-true"
 
 
     return config
