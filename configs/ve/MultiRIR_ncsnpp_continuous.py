@@ -71,9 +71,10 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.rir_samples_count = 512
-    data.first_stride_convolution = 2
-    data.image_size = data.rir_samples_count / data.first_stride_convolution
+    data.rir_samples_count = 128
+    #### don't touch first stride convolution
+    data.first_stride_convolution = 4
+    data.image_size = data.rir_samples_count / data.first_stride_convolution 
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
@@ -96,7 +97,7 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"
     model.nf = int(data.rir_samples_count / 8)
-    model.ch_mult = (1, 1, 1, 1)
+    model.ch_mult = (1, 1, 1)
     model.num_res_blocks = 2
     # model.attn_resolutions = (32,)
     model.attn_resolutions = (16,)

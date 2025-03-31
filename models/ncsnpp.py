@@ -306,7 +306,7 @@ class NCSNpp(nn.Module):
                 int(config.data.rir_samples_count / stride_first_convolution),
                 config.data.channels,
                 kernel_size=(3, 1),
-                stride=(4, 1),
+                stride=(stride_first_convolution, 1),
                 padding=(1, 0),
                 output_padding=(3, 0),
             )
