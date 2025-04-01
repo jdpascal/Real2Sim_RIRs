@@ -39,7 +39,7 @@ def restore_checkpoint(ckpt_path, state, device):
         logging.warning(f"No checkpoint found at {ckpt_path}. Returned the same state as input")
         return state
     else:
-        loaded_state = torch.load(ckpt_path, map_location=device)
+        loaded_state = torch.load(ckpt_path, map_location=device, weights_only=False)
         state['optimizer'].load_state_dict(loaded_state['optimizer'])
         state['model'].load_state_dict(loaded_state['model'], strict=False)
         state['ema'].load_state_dict(loaded_state['ema'])

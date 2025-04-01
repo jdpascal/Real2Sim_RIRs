@@ -262,47 +262,47 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     sampling_eps,
                     y=real_rir,
                 )
-                sample, n = sampling_fn(score_model)
+                samples, n = sampling_fn(score_model)
                 ema.restore(score_model.parameters())
 
-                # Sélection du premier exemple du batch pour la comparaison
-                perfect_rir_sample = (
-                    perfect_rir[0].detach().cpu().numpy()
-                )  # forme: (epaisseur=1, longueur, canaux)
-                generated_sample = (
-                    sample[0].detach().cpu().numpy()
-                )  # forme: (epaisseur=1, longueur, canaux)
-                # Suppression de la dimension "épaisseur" (qui vaut 1)
-                perfect_rir_sample = np.squeeze(
-                    perfect_rir_sample, axis=0
-                )  # devient (longueur, canaux)
-                generated_sample = np.squeeze(
-                    generated_sample, axis=0
-                )  # devient (longueur, canaux)
+                for index, sample in enumerate(samples):
+                    # Sélection du premier exemple du batch pour la comparaison
+                    perfect_rir_sample = (
+                        perfect_rir[0].detach().cpu().numpy()
+                    )  # forme: (epaisseur=1, longueur, canaux)
+                    generated_sample = (
+                        sample.detach().cpu().numpy()
+                    )  # forme: (epaisseur=1, longueur, canaux)
+                    # Suppression de la dimension "épaisseur" (qui vaut 1)
+                    perfect_rir_sample = np.squeeze(
+                        perfect_rir_sample, axis=0
+                    )  # devient (longueur, canaux)
+                    generated_sample = np.squeeze(
+                        generated_sample, axis=0
+                    )  # devient (longueur, canaux)
 
-                # On trace jusqu'à 32 canaux (ou le nombre maximum de canaux disponibles)
-                plt.ioff()
-                num_channels = min(32, perfect_rir_sample.shape[1])
-                fig, axes = plt.subplots(
-                    nrows=num_channels, ncols=1, sharex=True, figsize=(6, 12), layout='constrained'
-                )
-                for c in range(num_channels):
-                    # Puisque ce sont des signaux 1D, on les trace directement.
-                    signal_sample = generated_sample[:, c] / np.max(
-                        generated_sample[:, c]
+                    # On trace jusqu'à 32 canaux (ou le nombre maximum de canaux disponibles)
+                    plt.ioff()
+                    num_channels = min(32, perfect_rir_sample.shape[1])
+                    fig, axes = plt.subplots(
+                        nrows=num_channels, ncols=1, sharex=True, figsize=(6, 12), layout='constrained'
                     )
-                    signal_perfect = perfect_rir_sample[:, c]
-                    axes[c].plot(signal_sample, label="Channel sample")
-                    axes[c].plot(signal_perfect, label="Channel perfect")
-                    axes[c].set_ylim(bottom=-1.5, top=1.5)
+                    for c in range(num_channels):
+                        # Puisque ce sont des signaux 1D, on les trace directement.
+                        signal_sample = generated_sample[:, c] 
+                        # / np.max( generated_sample[:, c] )
+                        signal_perfect = perfect_rir_sample[:, c]
+                        axes[c].plot(signal_sample, label="Channel sample")
+                        axes[c].plot(signal_perfect, label="Channel perfect")
+                        axes[c].set_ylim(bottom=-1.5, top=1.5)
 
-                axes[-1].set_xlabel("Time")
-                axes[-1].legend()
-                fig.suptitle("Signal per channels")
-                # fig.tight_layout()
-                fig.subplots_adjust(hspace=0)
-                writer.add_figure(f"sample_at_step_{step}", fig)
-                plt.close()
+                    axes[-1].set_xlabel("Time")
+                    axes[-1].legend()
+                    fig.suptitle("Signal per channels")
+                    # fig.tight_layout()
+                    fig.subplots_adjust(hspace=0)
+                    writer.add_figure(f"sample_at_step_{step}", fig, index)
+                    plt.close()
 
     writer.close()
 

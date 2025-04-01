@@ -18,7 +18,7 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 32
+num_room = 10000
 positions_per_room = 10
 distance_src_mics = 1
 dist_mur = 1
@@ -67,7 +67,7 @@ def calculate_rirs_for_config(
     """
     # Orientation, test with source turn his back to the mics
     cartesian_coords = pos_mics - pos_src
-    r, theta, phi = fun.cartesian_to_spherical(-cartesian_coords) # remove the "-" to have the source facing the mics
+    r, theta, phi = fun.cartesian_to_spherical(cartesian_coords) # remove the "-" to have the source facing the mics
     orientation = Rotation3D([theta , phi], "zy", degrees=True)
     theta_mic, phi_mic = fun.random_angles()
     orientation_mic = Rotation3D([theta_mic, phi_mic], "zy", degrees=True)
@@ -283,7 +283,7 @@ def main():
     logger.info("Début de la génération des données.")
 
     configurations = []
-    for room_index in range(num_room):
+    for room_index in range(1477, num_room):
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]

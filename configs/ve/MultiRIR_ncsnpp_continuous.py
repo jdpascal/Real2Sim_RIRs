@@ -31,10 +31,10 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 16
-    training.n_iters = 3000
-    training.snapshot_freq = 500
-    training.log_freq = 500
-    training.eval_freq = 500
+    training.n_iters = 500
+    training.snapshot_freq = 100
+    training.log_freq = 100
+    training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
     training.snapshot_freq_for_preemption = 5000
     ## produce samples at each snapshot.
@@ -71,7 +71,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.rir_samples_count = 256
+    data.rir_samples_count = 128
     #### don't touch first stride convolution
     data.first_stride_convolution = 4
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
@@ -89,15 +89,15 @@ def get_config() -> ml_collections.ConfigDict:
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    model.sigma_max = 2
-    model.sigma_min = 0.5
+    model.sigma_max = 0.5
+    model.sigma_min = 0.05
     model.num_scales = 100
     model.scale_by_sigma = True
     model.ema_rate = 0.999
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"
     model.nf = int(data.rir_samples_count / 8)
-    model.ch_mult = (1, 1, 1, 2, 2, 2)
+    model.ch_mult = (1, 1, 1) #, 2, 2, 2, 2
     model.num_res_blocks = 3
     # model.attn_resolutions = (32,)
     model.attn_resolutions = (16,)
