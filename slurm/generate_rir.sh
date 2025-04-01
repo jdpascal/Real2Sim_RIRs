@@ -1,12 +1,8 @@
 #!/bin/bash -l
 
-#SBATCH -p publicgpu
-#SBATCH --nodes=2               # This needs to match --ddp-nodes
-#SBATCH --ntasks-per-node=4     # This needs to match --ddp-devices-per-node
-#SBATCH --gres=gpu:4            # Request N GPUs per machine
-#SBATCH --constraint=gputc
+#SBATCH -n 64                # 64 cœurs
 #SBATCH --mem=0
-#SBATCH --time=0-02:00:00
+#SBATCH --time=0-10:00:00
 
 # Load correct python and cuda modules
 module load python/3.12.8

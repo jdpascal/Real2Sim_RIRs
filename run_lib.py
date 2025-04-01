@@ -331,7 +331,6 @@ def evaluate(config, workdir, eval_folder="eval"):
 
     # Initialisation du modèle, de l'optimizer et de l'EMA.
     score_model = mutils.create_model(config)
-    score_model = ncsnpp.NCSNpp(config.model)
     optimizer = losses.get_optimizer(config, score_model.parameters())
     ema = ExponentialMovingAverage(
         score_model.parameters(), decay=config.model.ema_rate

@@ -44,8 +44,10 @@ def crop_resize(image, resolution):
 
 def no_geometric_attenuation(rir, len):
     t = np.linspace(0, len, len)
-    rir["real_rir"] = rir["real_rir"] * t / np.max(rir["real_rir"])
-    rir["perfect_rir"] = rir["perfect_rir"] * t / np.max(rir["perfect_rir"])
+    rir["real_rir"] = rir["real_rir"] * t
+    rir["real_rir"] = rir["real_rir"] / np.max(rir["real_rir"])
+    rir["perfect_rir"] = rir["perfect_rir"] * t
+    rir["perfect_rir"] = rir["perfect_rir"] / np.max(rir["perfect_rir"])
     return( rir )
 
 # -------------------------
