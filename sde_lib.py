@@ -151,7 +151,7 @@ class OUVESDE(SDE):
         return parser
 
     def __init__(
-        self, sigma_min, sigma_max, theta=1.5, N=30, sampler_type="pc", **ignored_kwargs
+        self, sigma_min, sigma_max, theta=1.0, N=30, sampler_type="pc", **ignored_kwargs
     ):
         """Construct an Ornstein-Uhlenbeck Variance Exploding SDE.
 

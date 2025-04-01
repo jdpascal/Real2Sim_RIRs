@@ -90,8 +90,8 @@ def get_config() -> ml_collections.ConfigDict:
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
     model.sigma_max = 1
-    model.sigma_min = 0.005
-    model.num_scales = 200
+    model.sigma_min = 0.05
+    model.num_scales = 160
     model.scale_by_sigma = True
     model.ema_rate = 0.999
     model.normalization = "GroupNorm"
