@@ -26,7 +26,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from absl import flags
 from lightning import Fabric
 from ml_collections import ConfigDict
@@ -40,7 +39,6 @@ import sampling
 import sde_lib
 
 # Importer tous les modèles pour les enregistrer
-from models import ncsnpp
 from models import utils as mutils
 from models.ema import ExponentialMovingAverage
 from utils import restore_checkpoint, save_checkpoint
@@ -208,12 +206,19 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         loss = train_step_fn(state, current_batch)
         # del current_batch
 
-        if step % config.training.log_freq == 0:
+        if step % config.training.log_freq == 0 and fabric.global_rank == 0:
+            # Gather loss from all processes, run this only on process with rank 0
+            loss = fabric.all_gather(loss).mean()
             logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
             writer.add_scalar("training_loss", loss.item(), step)
 
         # Sauvegarde d'un checkpoint temporaire pour reprise en cas d'interruption.
-        if step != 0 and step % config.training.snapshot_freq_for_preemption == 0:
+        # Run only on process with rank 0
+        if (
+            step != 0
+            and step % config.training.snapshot_freq_for_preemption == 0
+            and fabric.global_rank == 0
+        ):
             save_checkpoint(checkpoint_meta_dir, state)
 
         # Évaluation périodique sur le jeu de validation.
@@ -237,13 +242,18 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             # eval_img = scaler(eval_img)
             eval_img_batch = (eval_img_perfect, eval_img_real)
             eval_loss = eval_step_fn(state, eval_img_batch)
-            logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
-            scalar_ = eval_loss.item()
-            writer.add_scalar("eval_loss", scalar_, step)
+            # Run logging only on process with rank 0
+            if fabric.global_rank == 0:
+                eval_loss = fabric.all_gather(eval_loss).mean()
+                logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
+                writer.add_scalar("eval_loss", eval_loss.item(), step)
 
         # Sauvegarde d'un checkpoint complet et génération d'échantillons.
-        if (step != 0 and step % config.training.snapshot_freq == 0) or (
-            step == num_train_steps
+        # Run this only on process with rank 0
+        if (
+            (step != 0 and step % config.training.snapshot_freq == 0)
+            or (step == num_train_steps)
+            and fabric.global_rank == 0
         ):
             # Sauvegarde du checkpoint.
             save_step = step // config.training.snapshot_freq
@@ -285,11 +295,15 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     plt.ioff()
                     num_channels = min(32, perfect_rir_sample.shape[1])
                     fig, axes = plt.subplots(
-                        nrows=num_channels, ncols=1, sharex=True, figsize=(6, 12), layout='constrained'
+                        nrows=num_channels,
+                        ncols=1,
+                        sharex=True,
+                        figsize=(6, 12),
+                        layout="constrained",
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = generated_sample[:, c] 
+                        signal_sample = generated_sample[:, c]
                         # / np.max( generated_sample[:, c] )
                         signal_perfect = perfect_rir_sample[:, c]
                         axes[c].plot(signal_sample, label="Channel sample")
