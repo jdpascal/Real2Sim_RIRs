@@ -3,12 +3,12 @@ import os
 import torch
 from torch.nn import functional as F
 from torch.autograd import Function
-from torch.utils.cpp_extension import load
+from op.load import load_and_cache
 
 
 module_path = os.path.dirname(__file__)
 if torch.cuda.is_available():
-    upfirdn2d_op = load(
+    upfirdn2d_op = load_and_cache(
         "upfirdn2d",
         sources=[
             os.path.join(module_path, "upfirdn2d.cpp"),
@@ -17,6 +17,7 @@ if torch.cuda.is_available():
     )
 else:
     upfirdn2d_op = None
+
 
 class UpFirDn2dBackward(Function):
     @staticmethod

@@ -4,12 +4,12 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.autograd import Function
-from torch.utils.cpp_extension import load
+from op.load import load_and_cache
 
 
 module_path = os.path.dirname(__file__)
 if torch.cuda.is_available():
-    fused = load(
+    fused = load_and_cache(
         "fused",
         sources=[
             os.path.join(module_path, "fused_bias_act.cpp"),
