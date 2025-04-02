@@ -2,12 +2,13 @@
 
 import argparse
 import logging
-import os
 import runpy
+from datetime import datetime
 from pathlib import Path
 
 import ml_collections
 from lightning import Fabric
+from lightning.fabric.loggers.tensorboard import TensorBoardLogger
 
 import run_lib
 
@@ -94,38 +95,46 @@ def main():
     """
     Script entrypoint
     """
-    
+
     # Parse input arguments
     args = parse_args()
-    
+
+    # Création du répertoire de travail
+    workdir = Path(args.workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    # Summarises training logs to visualise with tensorboard
+    fabric_logger = TensorBoardLogger(
+        root_dir=workdir / "runs",
+        name=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+    )
+
     # Configure Fabric to take care of handling precision, parallelisation, etc
-    # TODO: Make precision an argument or a config parameter
     fabric = Fabric(
         precision=args.precision,
         num_nodes=args.ddp_nodes,
         devices=args.ddp_devices_per_node,
+        loggers=[fabric_logger],
     )
     fabric.launch()
-    
+
     # Configure logger format and log level
     logging.basicConfig(
         format=f"[rank-{fabric.global_rank}] - %(asctime)s %(levelname)s: %(filename)s:%(lineno)d (%(funcName)s) - %(message)s",
-        level=logging.INFO, # TODO: Make log level a command line argument (-v)
+        level=logging.INFO,  # TODO: Make log level a command line argument (-v)
     )
     logging.info("Configured logger.")
-    # Création du répertoire de travail
-    os.makedirs(args.workdir, exist_ok=True)
 
     # Charger la configuration depuis le fichier Python
     print("loading config")
     config = load_config(args.config)
-    
+
     # Synchronise all processes before starting training or eval
     # fabric.barrier()
 
     # Exécuter le pipeline en fonction du mode choisi
     if args.mode == "train":
-        run_lib.train(config, Path(args.workdir), fabric)
+        run_lib.train(config, workdir, fabric)
     elif args.mode == "eval":
         run_lib.evaluate(config, args.workdir, args.eval_folder)
     else:

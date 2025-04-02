@@ -55,11 +55,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         config: Objet de configuration.
         workdir: Répertoire de travail pour sauvegardes et logs TensorBoard.
     """
-    # Summarises training logs to visualise with tensorboard
-    writer = SummaryWriter(
-        log_dir=workdir / "runs" / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    )
-
     # Initialisation du modèle.
     score_model = mutils.create_model(config)
     ema = ExponentialMovingAverage(
@@ -208,10 +203,10 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         loss = fabric.all_gather(loss).mean()
         # del current_batch
 
-        if step % config.training.log_freq == 0 and fabric.global_rank == 0:
+        if step % config.training.log_freq == 0 and fabric.is_global_zero:
             # Gather loss from all processes, run this only on process with rank 0
             logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
-            writer.add_scalar("training_loss", loss.item(), step)
+            fabric.log("training_loss", loss.item(), step)
 
         # Sauvegarde d'un checkpoint temporaire pour reprise en cas d'interruption.
         # Run only on process with rank 0
@@ -245,16 +240,16 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             eval_loss = eval_step_fn(state, eval_img_batch)
             eval_loss = fabric.all_gather(eval_loss).mean()
             # Run logging only on process with rank 0
-            if fabric.global_rank == 0:
+            if fabric.is_global_zero:
                 logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
-                writer.add_scalar("eval_loss", eval_loss.item(), step)
+                fabric.log("eval_loss", eval_loss.item(), step)
 
         # Sauvegarde d'un checkpoint complet et génération d'échantillons.
         # Run this only on process with rank 0
         if (
             (step != 0 and step % config.training.snapshot_freq == 0)
             or (step == num_train_steps)
-            and fabric.global_rank == 0
+            and fabric.is_global_zero
         ):
             # Sauvegarde du checkpoint.
             save_step = step // config.training.snapshot_freq
@@ -316,10 +311,8 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     fig.suptitle("Signal per channels")
                     # fig.tight_layout()
                     fig.subplots_adjust(hspace=0)
-                    writer.add_figure(f"sample_at_step_{step}", fig, index)
+                    fabric.logger.experiment.write_figure(f"sample_at_step_{step}", fig, index)
                     plt.close()
-
-    writer.close()
 
 
 def evaluate(config, workdir, eval_folder="eval"):
