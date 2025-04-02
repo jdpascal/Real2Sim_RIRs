@@ -200,13 +200,14 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
 
         # Exécuter une étape d'entraînement
         loss = train_step_fn(state, current_batch)
-        loss = fabric.all_gather(loss).mean()
         # del current_batch
 
-        if step % config.training.log_freq == 0 and fabric.is_global_zero:
-            # Gather loss from all processes, run this only on process with rank 0
-            logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
-            fabric.log("training_loss", loss.item(), step)
+        if step % config.training.log_freq == 0:
+            loss = fabric.all_gather(loss).mean()
+            # Gather loss from all processes, log value only on process with rank 0
+            if fabric.is_global_zero:
+                logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
+                fabric.log("training_loss", loss.item(), step)
 
         # Sauvegarde d'un checkpoint temporaire pour reprise en cas d'interruption.
         # Run only on process with rank 0
