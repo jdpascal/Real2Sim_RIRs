@@ -316,7 +316,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     fig.suptitle("Signal per channels")
                     # fig.tight_layout()
                     fig.subplots_adjust(hspace=0)
-                    fabric.logger.experiment.write_figure(f"sample_at_step_{step}", fig, index)
+                    fabric.logger.experiment.add_figure(f"sample_at_step_{step}", fig, index)
                     plt.close()
 
 
