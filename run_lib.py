@@ -39,6 +39,7 @@ import sampling
 import sde_lib
 
 # Importer tous les modèles pour les enregistrer
+from models import ncsnpp
 from models import utils as mutils
 from models.ema import ExponentialMovingAverage
 from utils import restore_checkpoint, save_checkpoint
@@ -204,11 +205,11 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
 
         # Exécuter une étape d'entraînement
         loss = train_step_fn(state, current_batch)
+        loss = fabric.all_gather(loss).mean()
         # del current_batch
 
         if step % config.training.log_freq == 0 and fabric.global_rank == 0:
             # Gather loss from all processes, run this only on process with rank 0
-            loss = fabric.all_gather(loss).mean()
             logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
             writer.add_scalar("training_loss", loss.item(), step)
 
@@ -242,9 +243,9 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             # eval_img = scaler(eval_img)
             eval_img_batch = (eval_img_perfect, eval_img_real)
             eval_loss = eval_step_fn(state, eval_img_batch)
+            eval_loss = fabric.all_gather(eval_loss).mean()
             # Run logging only on process with rank 0
             if fabric.global_rank == 0:
-                eval_loss = fabric.all_gather(eval_loss).mean()
                 logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
                 writer.add_scalar("eval_loss", eval_loss.item(), step)
 
