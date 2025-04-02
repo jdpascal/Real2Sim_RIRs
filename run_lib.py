@@ -165,6 +165,10 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     num_train_steps = config.training.n_iters
     logging.info("Début de la boucle d'entraînement à l'étape %d.", initial_step)
 
+    # Log all configuration in tensorboard
+    if fabric.is_global_zero:
+        fabric.logger.log_hyperparams(config.to_dict())
+
     for step in range(initial_step, num_train_steps + 1):
         logging.info("Loop start %d", step)
         try:
