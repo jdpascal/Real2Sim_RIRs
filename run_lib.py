@@ -26,7 +26,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from absl import flags
 from lightning import Fabric
 from ml_collections import ConfigDict
@@ -56,11 +55,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         config: Objet de configuration.
         workdir: Répertoire de travail pour sauvegardes et logs TensorBoard.
     """
-    # Summarises training logs to visualise with tensorboard
-    writer = SummaryWriter(
-        log_dir=workdir / "runs" / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    )
-
     # Initialisation du modèle.
     score_model = mutils.create_model(config)
     ema = ExponentialMovingAverage(
@@ -171,6 +165,10 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     num_train_steps = config.training.n_iters
     logging.info("Début de la boucle d'entraînement à l'étape %d.", initial_step)
 
+    # Log all configuration in tensorboard
+    if fabric.is_global_zero:
+        fabric.logger.log_hyperparams(config.to_dict())
+
     for step in range(initial_step, num_train_steps + 1):
         logging.info("Loop start %d", step)
         try:
@@ -209,11 +207,19 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         # del current_batch
 
         if step % config.training.log_freq == 0:
-            logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
-            writer.add_scalar("training_loss", loss.item(), step)
+            loss = fabric.all_gather(loss).mean()
+            # Gather loss from all processes, log value only on process with rank 0
+            if fabric.is_global_zero:
+                logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
+                fabric.log("training_loss", loss.item(), step)
 
         # Sauvegarde d'un checkpoint temporaire pour reprise en cas d'interruption.
-        if step != 0 and step % config.training.snapshot_freq_for_preemption == 0:
+        # Run only on process with rank 0
+        if (
+            step != 0
+            and step % config.training.snapshot_freq_for_preemption == 0
+            and fabric.global_rank == 0
+        ):
             save_checkpoint(checkpoint_meta_dir, state)
 
         # Évaluation périodique sur le jeu de validation.
@@ -237,13 +243,18 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             # eval_img = scaler(eval_img)
             eval_img_batch = (eval_img_perfect, eval_img_real)
             eval_loss = eval_step_fn(state, eval_img_batch)
-            logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
-            scalar_ = eval_loss.item()
-            writer.add_scalar("eval_loss", scalar_, step)
+            eval_loss = fabric.all_gather(eval_loss).mean()
+            # Run logging only on process with rank 0
+            if fabric.is_global_zero:
+                logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
+                fabric.log("eval_loss", eval_loss.item(), step)
 
         # Sauvegarde d'un checkpoint complet et génération d'échantillons.
-        if (step != 0 and step % config.training.snapshot_freq == 0) or (
-            step == num_train_steps
+        # Run this only on process with rank 0
+        if (
+            (step != 0 and step % config.training.snapshot_freq == 0)
+            or (step == num_train_steps)
+            and fabric.is_global_zero
         ):
             # Sauvegarde du checkpoint.
             save_step = step // config.training.snapshot_freq
@@ -285,7 +296,11 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     plt.ioff()
                     num_channels = min(32, perfect_rir_sample.shape[1])
                     fig, axes = plt.subplots(
-                        nrows=num_channels, ncols=1, sharex=True, figsize=(6, 12), layout='constrained'
+                        nrows=num_channels,
+                        ncols=1,
+                        sharex=True,
+                        figsize=(6, 12),
+                        layout="constrained",
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
@@ -301,10 +316,8 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     fig.suptitle("Signal per channels")
                     # fig.tight_layout()
                     fig.subplots_adjust(hspace=0)
-                    writer.add_figure(f"sample_at_step_{step}", fig, index)
+                    fabric.logger.experiment.add_figure(f"sample_at_step_{step}", fig, index)
                     plt.close()
-
-    writer.close()
 
 
 def evaluate(config, workdir, eval_folder="eval"):
