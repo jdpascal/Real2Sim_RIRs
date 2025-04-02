@@ -289,9 +289,9 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = generated_sample[:, c] 
+                        signal_sample = generated_sample[:, c] / np.max( generated_sample[:, c] )
                         # / np.max( generated_sample[:, c] )
-                        signal_perfect = perfect_rir_sample[:, c]
+                        signal_perfect = perfect_rir_sample[:, c] - 0.5
                         axes[c].plot(signal_sample, label="Channel sample")
                         axes[c].plot(signal_perfect, label="Channel perfect")
                         axes[c].set_ylim(bottom=-1.5, top=1.5)

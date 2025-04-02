@@ -103,13 +103,13 @@ def get_sde_loss_fn(
         x, y = batch
         score_fn = mutils.get_score_fn(sde, model, train=train, continuous=continuous)
         t = torch.rand(x.shape[0], device=x.device) * (sde.T - eps) + eps
-        z = torch.randn_like(x)
+        z = torch.randn_like(x) 
         mean, std = sde.marginal_prob(batch, t)
-        perturbed_data = mean + std[:, None, None, None] * z
+        perturbed_data = mean + std[:, None, None, None] * z 
 
         score = score_fn(perturbed_data, t, y)
         if not likelihood_weighting:
-            losses = torch.square(score * std[:, None, None, None] + z)
+            losses = torch.square(score * std[:, None, None, None] + z) + torch.abs(score * std[:, None, None, None] + z)
             losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
         else:
             g2 = sde.sde(torch.zeros_like(x), t)[1] ** 2

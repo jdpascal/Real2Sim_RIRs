@@ -30,9 +30,9 @@ def get_config() -> ml_collections.ConfigDict:
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 32
-    training.n_iters = 5000
-    training.snapshot_freq = 200
+    training.batch_size = 16
+    training.n_iters = 10000
+    training.snapshot_freq = 500
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
@@ -49,7 +49,7 @@ def get_config() -> ml_collections.ConfigDict:
     sampling.n_steps_each = 1
     sampling.noise_removal = True
     sampling.probability_flow = False
-    sampling.snr = 0.075
+    sampling.snr = 0.1
     sampling.method = "pc"
     sampling.predictor = "none"
     sampling.corrector = "ald"
@@ -71,7 +71,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.rir_samples_count = 512
+    data.rir_samples_count = 256
     #### don't touch first stride convolution
     data.first_stride_convolution = 4
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
@@ -79,7 +79,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_2/"
-    data.num_room = 1000
+    data.num_room = 4550
     data.pos_per_room = 10
 
     # model
@@ -89,16 +89,16 @@ def get_config() -> ml_collections.ConfigDict:
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    model.sigma_max = 1
+    model.sigma_max = 10
     model.sigma_min = 0.05
-    model.num_scales = 160
+    model.num_scales = 150
     model.scale_by_sigma = True
     model.ema_rate = 0.999
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"
     model.nf = int(data.rir_samples_count / 8)
-    model.ch_mult = (1, 1, 1, 2, 2, 2, 2)
-    model.num_res_blocks = 3
+    model.ch_mult = (2, 2, 2, 2) #, 2, 2, 2
+    model.num_res_blocks = 4
     # model.attn_resolutions = (32,)
     model.attn_resolutions = (16,)
     model.resamp_with_conv = True
