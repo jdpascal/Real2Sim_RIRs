@@ -178,8 +178,8 @@ class NCSNpp(nn.Module):
             config.data.channels * 2,
             int(config.data.rir_samples_count / stride_first_convolution),
             stride=stride_first_convolution,
-            kernel_size=(15,1),
-            padding=(7,0)
+            kernel_size=(9,1),
+            padding=(4,0)
         ))
 
         # Downsampling block
@@ -308,7 +308,7 @@ class NCSNpp(nn.Module):
                 kernel_size=(3, 1),
                 stride=(stride_first_convolution, 1),
                 padding=(1, 0),
-                output_padding=(3, 0),
+                output_padding=(1, 0),  # (3,0) if stride_first_convolution == 4 else (1, 0),
             )
         )
 

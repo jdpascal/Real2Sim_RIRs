@@ -305,7 +305,8 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = (generated_sample[:, c] - 0.5 ) / np.max( generated_sample )
+                        signal_sample = (generated_sample[:, c] - 0.5 ) 
+                        # / np.max( generated_sample )
                         # signal_sample = signal_sample 
                         #/ np.sqrt(t) - 0.5
                         # / np.max( generated_sample[:, c] )

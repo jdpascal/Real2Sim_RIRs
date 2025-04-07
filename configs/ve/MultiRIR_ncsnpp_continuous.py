@@ -30,9 +30,9 @@ def get_config() -> ml_collections.ConfigDict:
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 16
+    training.batch_size = 32
     training.n_iters = 10000
-    training.snapshot_freq = 500
+    training.snapshot_freq = 1000
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
@@ -46,10 +46,10 @@ def get_config() -> ml_collections.ConfigDict:
 
     # sampling
     config.sampling = sampling = ml_collections.ConfigDict()
-    sampling.n_steps_each = 1
+    sampling.n_steps_each = 20
     sampling.noise_removal = True
     sampling.probability_flow = False
-    sampling.snr = 0.1
+    sampling.snr = 0.33
     sampling.method = "pc"
     sampling.predictor = "none"
     sampling.corrector = "ald"
@@ -73,31 +73,31 @@ def get_config() -> ml_collections.ConfigDict:
     data.dataset = "MultiRIR"
     data.rir_samples_count = 256
     #### don't touch first stride convolution
-    data.first_stride_convolution = 4
+    data.first_stride_convolution = 2
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_2/"
-    data.num_room = 4550
+    data.num_room = 1000
     data.pos_per_room = 10
 
     # model
     config.model = model = ml_collections.ConfigDict()
-    model.beta_min = 0.1
-    model.beta_max = 20.0
+    # model.beta_min = 0.1
+    # model.beta_max = 20.0
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    model.sigma_max = 10
-    model.sigma_min = 0.05
-    model.num_scales = 150
+    model.sigma_max = 1.0
+    model.sigma_min = 0.1
+    model.num_scales = 200
     model.scale_by_sigma = True
     model.ema_rate = 0.999
     model.normalization = "GroupNorm"
-    model.nonlinearity = "elu"
-    model.nf = int(data.rir_samples_count / 8)
-    model.ch_mult = (2, 2, 2, 2) #, 2, 2, 2
+    model.nonlinearity = "elu"  # "lrelu"
+    model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
+    model.ch_mult = (2,2,4) #, 2, 2, 2
     model.num_res_blocks = 4
     # model.attn_resolutions = (32,)
     model.attn_resolutions = (16,)

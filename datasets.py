@@ -44,9 +44,9 @@ def crop_resize(image, resolution):
 
 def no_geometric_attenuation(rir, len):
     t = np.linspace(0, len, len)
-    rir["real_rir"] = rir["real_rir"] * np.sqrt(t)
-    rir["real_rir"] = rir["real_rir"] / 2 / np.max(rir["real_rir"]) + 0.5 
-    rir["perfect_rir"] = rir["perfect_rir"] * np.sqrt(t)
+    rir["real_rir"] = rir["real_rir"] #* np.sqrt(t)
+    rir["real_rir"] = rir["real_rir"] / 2 / np.max(rir["real_rir"]) + 0.5
+    rir["perfect_rir"] = rir["perfect_rir"] #* np.sqrt(t)
     rir["perfect_rir"] = rir["perfect_rir"] / 2 /  np.max(rir["perfect_rir"]) + 0.5
     return( rir )
 
@@ -94,8 +94,8 @@ class MultiRIRDataset(Dataset):
         else:
             # Reshape data, although this could (should?) be done using a Transform
             # https://pytorch.org/tutorials/beginner/data_loading_tutorial.html#transforms
-            sample['perfect_rir'] = sample['perfect_rir'][:, None, :].astype(np.float32)
-            sample['real_rir'] = sample['real_rir'][:, None, :].astype(np.float32)
+            sample['perfect_rir'] = sample['perfect_rir'][:, None, :].astype(np.float32) + 0.5
+            sample['real_rir'] = sample['real_rir'][:, None, :].astype(np.float32) + 0.5
 
         return sample
 
@@ -260,13 +260,13 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
             root_dir=config.data.npz_path,
             config=config,
             mode="train",
-            transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
+            # transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
         )
         eval_dataset = MultiRIRDataset(
             root_dir=config.data.npz_path,
             config=config,
             mode="eval",
-            transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
+            # transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
         )
 
     elif config.data.dataset in ['FFHQ', 'CelebAHQ']:
