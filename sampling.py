@@ -175,30 +175,52 @@ class Corrector(abc.ABC):
 
 
 @register_predictor(name='euler_maruyama')
+# class EulerMaruyamaPredictor(Predictor):
+#   def __init__(self, sde, score_fn, probability_flow=False):
+#     super().__init__(sde, score_fn, probability_flow)
+
+#   def update_fn(self, x, t):
+#     dt = -1. / self.rsde.N
+#     z = torch.randn_like(x)
+#     drift, diffusion = self.rsde.sde(x, t)
+#     x_mean = x + drift * dt
+#     x = x_mean + diffusion[:, None, None, None] * np.sqrt(-dt) * z
+#     return x, x_mean
 class EulerMaruyamaPredictor(Predictor):
-  def __init__(self, sde, score_fn, probability_flow=False):
-    super().__init__(sde, score_fn, probability_flow)
+    def __init__(self, sde, score_fn, probability_flow=False):
+        super().__init__(sde, score_fn, probability_flow=probability_flow)
 
-  def update_fn(self, x, t):
-    dt = -1. / self.rsde.N
-    z = torch.randn_like(x)
-    drift, diffusion = self.rsde.sde(x, t)
-    x_mean = x + drift * dt
-    x = x_mean + diffusion[:, None, None, None] * np.sqrt(-dt) * z
-    return x, x_mean
+    def update_fn(self, x, y, t, *args):
+        dt = -1. / self.rsde.N
+        z = torch.randn_like(x)
+        f, g = self.rsde.sde(x, y, t, *args)
+        x_mean = x + f * dt
+        x = x_mean + g[:, None, None, None] * np.sqrt(-dt) * z
+        return x, x_mean
 
 
+# @register_predictor(name='reverse_diffusion')
+# class ReverseDiffusionPredictor(Predictor):
+#   def __init__(self, sde, score_fn, probability_flow=False):
+#     super().__init__(sde, score_fn, probability_flow)
+
+#   def update_fn(self, x, t):
+#     f, G = self.rsde.discretize(x, t)
+#     z = torch.randn_like(x)
+#     x_mean = x - f
+#     x = x_mean + G[:, None, None, None] * z
+#     return x, x_mean
 @register_predictor(name='reverse_diffusion')
 class ReverseDiffusionPredictor(Predictor):
   def __init__(self, sde, score_fn, probability_flow=False):
-    super().__init__(sde, score_fn, probability_flow)
+      super().__init__(sde, score_fn, probability_flow=probability_flow)
 
-  def update_fn(self, x, t):
-    f, G = self.rsde.discretize(x, t)
-    z = torch.randn_like(x)
-    x_mean = x - f
-    x = x_mean + G[:, None, None, None] * z
-    return x, x_mean
+  def update_fn(self, x, t, y, stepsize=1):
+      f, g = self.rsde.discretize(x, y, t, stepsize)
+      z = torch.randn_like(x)
+      x_mean = x - f
+      x = x_mean + g[:, None, None, None].to(device=x_mean.device) * z
+      return x, x_mean
 
 
 @register_predictor(name='ancestral_sampling')
@@ -247,7 +269,7 @@ class NonePredictor(Predictor):
   def __init__(self, sde, score_fn, probability_flow=False):
     pass
 
-  def update_fn(self, x, t, y=None):
+  def update_fn(self, x, t, y=None,stepsize=None):
     return x, x
 
 
@@ -325,7 +347,7 @@ class AnnealedLangevinDynamics(Corrector):
       else:
         grad = score_fn(x, t)
       noise = torch.randn_like(x)
-      step_size = ((target_snr * std) ** 2 * 2).to(grad.device) #* alpha
+      step_size = ((target_snr * std) ** 2 * 2).to(grad.device) 
       x_mean = x + step_size[:, None, None, None] * grad
       x = x_mean + noise * torch.sqrt(step_size * 2)[:, None, None, None]
 
@@ -343,7 +365,7 @@ class NoneCorrector(Corrector):
     return x, x
 
 
-def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, continuous, y=None):
+def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, continuous, y=None,step=None):
   """A wrapper that configures and returns the update function of predictors."""
   score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
   if predictor is None:
@@ -351,7 +373,7 @@ def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, co
     predictor_obj = NonePredictor(sde, score_fn, probability_flow)
   else:
     predictor_obj = predictor(sde, score_fn, probability_flow)
-  return predictor_obj.update_fn(x, t, y)
+  return predictor_obj.update_fn(x, t, y, stepsize=step)
 
 
 def shared_corrector_update_fn(x, t, sde, model, corrector, continuous, snr, n_steps, y=None):
@@ -390,6 +412,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
   # Create predictor & corrector update functions
   predictor_update_fn = functools.partial(shared_predictor_update_fn,
                                           sde=sde,
+                                          y=y,
                                           predictor=predictor,
                                           probability_flow=probability_flow,
                                           continuous=continuous)
@@ -416,6 +439,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
       else:
         x = sde.prior_sampling(shape)
       timesteps = torch.linspace(sde.T, eps, sde.N)
+      stepsize = timesteps[-1] - timesteps[-2]
 
       samples = []
 
@@ -424,7 +448,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
         t = timesteps[i]
         vec_t = torch.ones(shape[0], device=t.device) * t
         x, x_mean = corrector_update_fn(x, vec_t, model=model)
-        x, x_mean = predictor_update_fn(x, vec_t, model=model)
+        x, x_mean = predictor_update_fn(x, vec_t, model=model,step=stepsize)
 
         if i % 10 == 0:
           samples.append(inverse_scaler(x_mean if denoise else x)[0])

@@ -275,6 +275,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 )
                 samples, n = sampling_fn(score_model)
                 ema.restore(score_model.parameters())
+                # t = np.linspace(0, config.data.rir_samples_count, config.data.rir_samples_count) + 1e-2
 
                 for index, sample in enumerate(samples):
                     # Sélection du premier exemple du batch pour la comparaison
@@ -299,12 +300,14 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                         nrows=num_channels,
                         ncols=1,
                         sharex=True,
-                        figsize=(6, 12),
+                        figsize=(12,24),
                         layout="constrained",
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = generated_sample[:, c] / np.max( generated_sample[:, c] )
+                        signal_sample = (generated_sample[:, c] - 0.5 ) / np.max( generated_sample )
+                        # signal_sample = signal_sample 
+                        #/ np.sqrt(t) - 0.5
                         # / np.max( generated_sample[:, c] )
                         signal_perfect = perfect_rir_sample[:, c] - 0.5
                         axes[c].plot(signal_sample, label="Channel sample")

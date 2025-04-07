@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
         "--precision",
         dest="precision",
         type=str,
-        default="16-mixed",
+        default="32-true",
         choices=["bf16-mixed", "16-mixed", "16-true", "32-true"],
         help="Precision souhaitee, bf = brain float",
     )
@@ -107,6 +107,7 @@ def main():
     fabric_logger = TensorBoardLogger(
         root_dir=workdir / "runs",
         name=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+        # default_hp_metric=False,
     )
 
     # Configure Fabric to take care of handling precision, parallelisation, etc

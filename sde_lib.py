@@ -25,11 +25,11 @@ class SDE(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def sde(self, x, t):
+    def sde(self, x, y, t):
         pass
 
     @abc.abstractmethod
-    def marginal_prob(self, x, t):
+    def marginal_prob(self, x, y, t):
         """Parameters to determine the marginal distribution of the SDE, $p_t(x)$."""
         pass
 
@@ -51,39 +51,39 @@ class SDE(abc.ABC):
         """
         pass
 
-    def discretize(self, x, t):
+    def discretize(self, x, y, t, stepsize):
         """Discretize the SDE in the form: x_{i+1} = x_i + f_i(x_i) + G_i z_i.
 
         Useful for reverse diffusion sampling and probabiliy flow sampling.
         Defaults to Euler-Maruyama discretization.
 
         Args:
-          x: a torch tensor
-          t: a torch float representing the time step (from 0 to `self.T`)
+            x: a torch tensor
+            t: a torch float representing the time step (from 0 to `self.T`)
 
         Returns:
-          f, G
+            f, G
         """
-        dt = 1 / self.N
-        drift, diffusion = self.sde(x, t)
+        dt = stepsize
+        drift, diffusion = self.sde(x, y, t)
         f = drift * dt
-        G = diffusion * torch.sqrt(torch.tensor(dt))
+        G = diffusion * torch.sqrt(dt)
         return f, G
 
-    def reverse(self, score_fn, probability_flow=False):
+    def reverse(oself, score_model, probability_flow=False):
         """Create the reverse-time SDE/ODE.
 
         Args:
-          score_fn: A time-dependent score-based model that takes x and t and returns the score.
-          probability_flow: If `True`, create the reverse-time ODE used for probability flow sampling.
+            score_model: A function that takes x, t and y and returns the score.
+            probability_flow: If `True`, create the reverse-time ODE used for probability flow sampling.
         """
-        N = self.N
-        T = self.T
-        sde_fn = self.sde
-        discretize_fn = self.discretize
+        N = oself.N
+        T = oself.T
+        sde_fn = oself.sde
+        discretize_fn = oself.discretize
 
         # Build the class for reverse-time SDE.
-        class RSDE(self.__class__):
+        class RSDE(oself.__class__):
             def __init__(self):
                 self.N = N
                 self.probability_flow = probability_flow
@@ -92,23 +92,28 @@ class SDE(abc.ABC):
             def T(self):
                 return T
 
-            def sde(self, x, t):
+            def sde(self, x, y, t, *args):
                 """Create the drift and diffusion functions for the reverse SDE/ODE."""
-                drift, diffusion = sde_fn(x, t)
-                score = score_fn(x, t)
-                drift = drift - diffusion[:, None, None, None] ** 2 * score * (
-                    0.5 if self.probability_flow else 1.0
-                )
-                # Set the diffusion function to zero for ODEs.
-                diffusion = 0.0 if self.probability_flow else diffusion
-                return drift, diffusion
+                rsde_parts = self.rsde_parts(x, y, t, *args)
+                total_drift, diffusion = rsde_parts["total_drift"], rsde_parts["diffusion"]
+                return total_drift, diffusion
 
-            def discretize(self, x, t):
+            def rsde_parts(self, x, y, t, *args):
+                sde_drift, sde_diffusion = sde_fn(x, y, t, *args)
+                score = score_model(x, t, y, *args)
+                score_drift = -sde_diffusion[:, None, None, None]**2 * score * (0.5 if self.probability_flow else 1.)
+                diffusion = torch.zeros_like(sde_diffusion) if self.probability_flow else sde_diffusion
+                total_drift = sde_drift + score_drift
+                return {
+                    'total_drift': total_drift, 'diffusion': diffusion, 'sde_drift': sde_drift,
+                    'sde_diffusion': sde_diffusion, 'score_drift': score_drift, 'score': score,
+                }
+
+            def discretize(self, x, y, t, stepsize):
                 """Create discretized iteration rules for the reverse diffusion sampler."""
-                f, G = discretize_fn(x, t)
-                rev_f = f - G[:, None, None, None] ** 2 * score_fn(x, t) * (
-                    0.5 if self.probability_flow else 1.0
-                )
+                f, G = discretize_fn(x, y, t, stepsize)
+                sc = score_model(x, t, y)
+                rev_f = f - G[:, None, None, None].to(device=f.device) ** 2 * sc * (0.5 if self.probability_flow else 1.)
                 rev_G = torch.zeros_like(G) if self.probability_flow else G
                 return rev_f, rev_G
 
@@ -151,7 +156,7 @@ class OUVESDE(SDE):
         return parser
 
     def __init__(
-        self, sigma_min, sigma_max, theta=1.0, N=30, sampler_type="pc", **ignored_kwargs
+        self, sigma_min, sigma_max, theta=2.0, N=30, sampler_type="pc", **ignored_kwargs
     ):
         """Construct an Ornstein-Uhlenbeck Variance Exploding SDE.
 
@@ -205,7 +210,7 @@ class OUVESDE(SDE):
         theta = self.theta
         # print("t x0 et y ",t.shape, x0.shape, y.shape)
         exp_interp = torch.exp(-theta * t)[:, None, None, None].to(device=x0.device)
-        return exp_interp * x0 + (1 - exp_interp) * y
+        return exp_interp * x0 + (1 - exp_interp) * y.to(device=x0.device)
 
     def alpha(self, t):
         return torch.exp(-self.theta * t)
@@ -241,6 +246,86 @@ class OUVESDE(SDE):
     def prior_logp(self, z):
         raise NotImplementedError("prior_logp for OU SDE not yet implemented!")
 
+
+class SBVESDE(SDE):
+    @staticmethod
+    def add_argparse_args(parser):
+        parser.add_argument("--N", type=int, default=50, help="The number of timesteps in the SDE discretization. 50 by default")
+        parser.add_argument("--k", type=float, default=2.6, help="Parameter of the diffusion coefficient. 2.6 by default.")
+        parser.add_argument("--c", type=float, default=0.4, help="Parameter of the diffusion coefficient. 0.4 by default.")
+        parser.add_argument("--eps", type=float, default=1e-8, help="Small constant to avoid numerical instability. 1e-8 by default.")
+        parser.add_argument("--sampler_type", type=str, default="ode")
+        return parser
+
+    def __init__(self, k, c, N=50, eps=1e-8, sampler_type="ode", **ignored_kwargs):
+        """Construct a Schrodinger Bridge with Variance Exploding SDE.
+
+        As described in Jukić et al., „Schrödinger Bridge for Generative Speech Enhancement“, 2024.
+
+        Args:
+            k: stiffness parameter.
+            c: diffusion parameter.
+            N: number of discretization steps
+        """
+        super().__init__(N)
+        self.k = k
+        self.c = c
+        self.N = N
+        self.eps = eps
+        self.sampler_type = sampler_type
+
+    def copy(self):
+        return SBVESDE(self.k, self.c, N=self.N)
+
+    @property
+    def T(self):
+        return 1
+
+    def sde(self, x, y, t):
+        f = 0.0                                                                 # Table 1
+        g = torch.sqrt(torch.tensor(self.c)) * self.k**(t)                      # Table 1
+        return f, g
+
+    def _sigmas_alphas(self, t):
+        alpha_t = torch.ones_like(t)
+        alpha_T = torch.ones_like(t)
+        sigma_t = torch.sqrt((self.c*(self.k**(2*t)-1.0)) \
+            / (2*torch.log(torch.tensor(self.k))))                              # Table 1
+        sigma_T = torch.sqrt((self.c*(self.k**(2*self.T)-1.0)) \
+            / (2*torch.log(torch.tensor(self.k))))                              # Table 1   
+        
+        alpha_bart = alpha_t / (alpha_T + self.eps)                             # below Eq. (9)
+        sigma_bart = torch.sqrt(sigma_T**2 - sigma_t**2 + self.eps)             # below Eq. (9)
+
+        return sigma_t, sigma_T, sigma_bart, alpha_t, alpha_T, alpha_bart
+
+    def _mean(self, x0, y, t):
+        sigma_t, sigma_T, sigma_bart, alpha_t, alpha_T, alpha_bart = self._sigmas_alphas(t)
+
+        w_xt = alpha_t * sigma_bart**2 / (sigma_T**2 + self.eps)                # below Eq. (11)
+        w_yt = alpha_bart * sigma_t**2 / (sigma_T**2 + self.eps)                # below Eq. (11)
+
+        mu = w_xt[:, None, None, None] * x0 + w_yt[:, None, None, None] * y     # Eq. (11)
+        return mu
+
+    def _std(self, t):
+        sigma_t, sigma_T, sigma_bart, alpha_t, alpha_T, alpha_bart = self._sigmas_alphas(t)
+
+        sigma_xt = (alpha_t * sigma_bart * sigma_t) / (sigma_T + self.eps) 
+        return sigma_xt
+
+    def marginal_prob(self, batch, t):  
+        x0, y = batch
+        return self._mean(x0, y, t), self._std(t)
+
+    def prior_sampling(self, shape, y):
+        if shape != y.shape:
+            warnings.warn(f"Target shape {shape} does not match shape of y {y.shape}! Ignoring target shape.")
+        x_T = y
+        return x_T
+
+    def prior_logp(self, z):
+        raise NotImplementedError("prior_logp for SBVE SDE not yet implemented!")  
 
 class VPSDE(SDE):
     def __init__(self, beta_min=0.1, beta_max=20, N=1000):
