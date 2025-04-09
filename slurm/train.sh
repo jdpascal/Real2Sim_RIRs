@@ -1,12 +1,12 @@
 #!/bin/bash -l
 
 #SBATCH -p publicgpu
-#SBATCH --nodes=2               # This needs to match --ddp-nodes
-#SBATCH --ntasks-per-node=4     # This needs to match --ddp-devices-per-node
-#SBATCH --gres=gpu:4            # Request N GPUs per machine
+#SBATCH --nodes=1               # This needs to match --ddp-nodes
+#SBATCH --ntasks-per-node=2     # This needs to match --ddp-devices-per-node
+#SBATCH --gres=gpu:2            # Request N GPUs per machine
 #SBATCH --constraint=gputc
 #SBATCH --mem=0
-#SBATCH --time=0-05:00:00
+#SBATCH --time=0-10:00:00
 
 # Load correct python and cuda modules
 module load python/3.12.8
@@ -28,5 +28,5 @@ srun python main.py \
     --mode train \
     --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \
-    --ddp-nodes 2\
-    --ddp-devices-per-node 4
+    --ddp-nodes 1\
+    --ddp-devices-per-node 2

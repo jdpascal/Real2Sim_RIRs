@@ -292,6 +292,13 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     generated_sample = np.squeeze(
                         generated_sample, axis=0
                     )  # devient (longueur, canaux)
+                    real_rir_sample = (
+                        real_rir[0].detach().cpu().numpy()
+                    )
+                    # Suppression de la dimension "épaisseur" (qui vaut 1)
+                    real_rir_sample = np.squeeze(
+                        real_rir_sample, axis=0
+                    )  # devient (longueur, canaux)
 
                     # On trace jusqu'à 32 canaux (ou le nombre maximum de canaux disponibles)
                     plt.ioff()
@@ -305,14 +312,16 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = (generated_sample[:, c] - 0.5 ) 
+                        signal_sample = (generated_sample[:, c]) 
                         # / np.max( generated_sample )
                         # signal_sample = signal_sample 
                         #/ np.sqrt(t) - 0.5
                         # / np.max( generated_sample[:, c] )
-                        signal_perfect = perfect_rir_sample[:, c] - 0.5
+                        signal_perfect = perfect_rir_sample[:, c] 
+                        signal_real = real_rir_sample[:, c]
                         axes[c].plot(signal_sample, label="Channel sample")
                         axes[c].plot(signal_perfect, label="Channel perfect")
+                        axes[c].plot(signal_real, label="Channel real")
                         axes[c].set_ylim(bottom=-1.5, top=1.5)
 
                     axes[-1].set_xlabel("Time")

@@ -94,8 +94,8 @@ class MultiRIRDataset(Dataset):
         else:
             # Reshape data, although this could (should?) be done using a Transform
             # https://pytorch.org/tutorials/beginner/data_loading_tutorial.html#transforms
-            sample['perfect_rir'] = sample['perfect_rir'][:, None, :].astype(np.float32) + 0.5
-            sample['real_rir'] = sample['real_rir'][:, None, :].astype(np.float32) + 0.5
+            sample['perfect_rir'] = sample['perfect_rir'][:, None, :].astype(np.float32)
+            sample['real_rir'] = sample['real_rir'][:, None, :].astype(np.float32)
 
         return sample
 

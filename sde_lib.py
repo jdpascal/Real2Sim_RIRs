@@ -326,6 +326,78 @@ class SBVESDE(SDE):
 
     def prior_logp(self, z):
         raise NotImplementedError("prior_logp for SBVE SDE not yet implemented!")  
+    
+
+
+#This is the SDE for the Brownian Bridge with Exploding Diffusion Coefficient. It uses the same parameterization as in the paper bbed vs ouve.
+class BBED(SDE):
+    @staticmethod
+    def add_argparse_args(parser):
+        parser.add_argument("--sde-n", type=int, default=30, help="The number of timesteps in the SDE discretization. 30 by default")
+        parser.add_argument("--T_sampling", type=float, default=0.999, help="The T so that t < T during sampling in the train step.")
+        parser.add_argument("--k", type=float, default = 2.6, help="base factor for diffusion term") 
+        parser.add_argument("--theta", type=float, default = 0.52, help="root scale factor for diffusion term.")
+        return parser
+
+    def __init__(self, T_sampling, k, theta, N=1000, **kwargs):
+        """Construct an Brownian Bridge with Exploding Diffusion Coefficient SDE with parameterization as in the paper.
+        dx = (y-x)/(Tc-t) dt + sqrt(theta)*k^t dw
+        """
+        super().__init__(N)
+        self.k = k
+        self.logk = np.log(self.k)
+        self.theta = theta
+        self.N = N
+        self.Eilog = sc.expi(-2*self.logk)
+        self.T = T_sampling #for sampling in train step and inference
+        self.Tc = 1 #for constructing the SDE, dont change this
+
+
+    def copy(self):
+        return BBED(self.T, self.k, self.theta, N=self.N)
+
+
+    def T(self):
+        return self.T
+    
+    def Tc(self):
+        return self.Tc
+
+
+    def sde(self, x, y, t):
+        drift = (y - x)/(self.Tc - t)
+        sigma = (self.k) ** t
+        diffusion = sigma * np.sqrt(self.theta)
+        return drift, diffusion
+
+
+    def _mean(self, x0, y, t):
+        time = (t/self.Tc)[:, None, None, None]
+        mean = x0*(1-time) + y*time
+        return mean
+
+    def _std(self, t):
+        t_np = t.cpu().detach().numpy()
+        Eis = sc.expi(2*(t_np-1)*self.logk) - self.Eilog
+        h = 2*self.k**2*self.logk
+        var = (self.k**(2*t_np)-1+t_np) + h*(1-t_np)*Eis
+        var = torch.tensor(var).to(device=t.device)*(1-t)*self.theta
+        return torch.sqrt(var)
+
+    def marginal_prob(self, batch, t):
+        x0, y = batch
+        return self._mean(x0, t, y), self._std(t)
+
+    def prior_sampling(self, shape, y):
+        if shape != y.shape:
+            warnings.warn(f"Target shape {shape} does not match shape of y {y.shape}! Ignoring target shape.")
+        std = self._std(self.T*torch.ones((y.shape[0],), device=y.device))
+        z = torch.randn_like(y)
+        x_T = y + z * std[:, None, None, None]
+        return x_T, z
+
+    def prior_logp(self, z):
+        raise NotImplementedError("prior_logp for BBED not yet implemented!")
 
 class VPSDE(SDE):
     def __init__(self, beta_min=0.1, beta_max=20, N=1000):

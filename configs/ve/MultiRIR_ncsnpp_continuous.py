@@ -30,13 +30,13 @@ def get_config() -> ml_collections.ConfigDict:
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 32
-    training.n_iters = 10000
+    training.batch_size = 2
+    training.n_iters = 15000
     training.snapshot_freq = 1000
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
-    training.snapshot_freq_for_preemption = 50000
+    training.snapshot_freq_for_preemption = 5000
     ## produce samples at each snapshot.
     training.snapshot_sampling = True
     training.likelihood_weighting = False
@@ -71,15 +71,15 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.rir_samples_count = 256
+    data.rir_samples_count = 512
     #### don't touch first stride convolution
-    data.first_stride_convolution = 2
+    data.first_stride_convolution = 1
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_2/"
-    data.num_room = 1000
+    data.num_room = 10000
     data.pos_per_room = 10
 
     # model
@@ -97,10 +97,10 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"  # "lrelu"
     model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
-    model.ch_mult = (2,2,4) #, 2, 2, 2
-    model.num_res_blocks = 4
-    # model.attn_resolutions = (32,)
-    model.attn_resolutions = (16,)
+    model.ch_mult = (1,1,1,1,2,2,2) #, 2, 2, 2
+    model.num_res_blocks = 1
+    # model.attn_resolutions = (16,)
+    model.attn_resolutions = (8,)
     model.resamp_with_conv = True
     model.conditional = True
     model.fir = True

@@ -37,7 +37,7 @@ class GaussianFourierProjection(nn.Module):
     self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 
   def forward(self, x):
-    x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
+    x_proj = x[:, None] * (self.W[None, :]).to(x.device) * 2 * np.pi
     return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
 
 
@@ -272,6 +272,7 @@ class ResnetBlockBigGANpp(nn.Module):
     h = self.act(self.GroupNorm_1(h))
     h = self.Dropout_0(h)
     h = self.Conv_1(h)
+    h = self.act(self.GroupNorm_1(h))
 
     if self.in_ch != self.out_ch or self.up or self.down:
       x = self.Conv_2(x)
