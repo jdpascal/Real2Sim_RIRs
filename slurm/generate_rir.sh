@@ -2,7 +2,7 @@
 
 #SBATCH -n 64                # 64 cœurs
 #SBATCH --mem=0
-#SBATCH --time=0-10:00:00
+#SBATCH --time=0-20:00:00
 
 # Load correct python and cuda modules
 module load python/3.12.8
