@@ -29,6 +29,7 @@ import numpy as np
 from absl import flags
 from lightning import Fabric
 from ml_collections import ConfigDict
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 import datasets
@@ -194,6 +195,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 real_rir = real_rir.permute(0, 2, 3, 1)
             # print("real_rir.shape", real_rir.shape)
             current_batch = (perfect_rir, real_rir)
+            del perfect_rir, real_rir
         else:
             # Pour un dataset classique avec la clé 'image'.
             img = batch["image"]
@@ -230,8 +232,8 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 eval_iter = iter(eval_loader)
                 eval_batch = next(eval_iter)
             # Ici, on suppose que le dataset d'évaluation renvoie la clé 'image'.
-            eval_img_perfect = eval_batch["perfect_rir"].to(fabric.device)
-            eval_img_real = eval_batch["real_rir"].to(fabric.device)
+            eval_img_perfect = eval_batch["perfect_rir"].to(fabric.device).detach()
+            eval_img_real = eval_batch["real_rir"].to(fabric.device).detach()
             # print("avant permute ? eval perfect, real" , eval_img_perfect.shape, eval_img_real.shape)
             if (
                 eval_img_perfect.ndim == 4
@@ -248,6 +250,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             if fabric.is_global_zero:
                 logging.info("étape: %d, loss évaluation: %.5e", step, eval_loss.item())
                 fabric.log("eval_loss", eval_loss.item(), step)
+            del eval_img_batch, eval_img_perfect, eval_img_real, eval_batch
 
         # Sauvegarde d'un checkpoint complet et génération d'échantillons.
         # Run this only on process with rank 0
@@ -263,24 +266,26 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
 
             # Génération d'échantillons.
             if config.training.snapshot_sampling:
-                ema.store(score_model.parameters())
-                ema.copy_to(score_model.parameters())
-                sampling_fn = sampling.get_sampling_fn(
-                    config,
-                    sde,
-                    sampling_shape,
-                    inverse_scaler,
-                    sampling_eps,
-                    y=real_rir,
-                )
-                samples, n = sampling_fn(score_model)
-                ema.restore(score_model.parameters())
-                # t = np.linspace(0, config.data.rir_samples_count, config.data.rir_samples_count) + 1e-2
+                optimizer.zero_grad()
+                with torch.no_grad():
+                    ema.store(score_model.parameters())
+                    ema.copy_to(score_model.parameters())
+                    sampling_fn = sampling.get_sampling_fn(
+                        config,
+                        sde,
+                        sampling_shape,
+                        inverse_scaler,
+                        sampling_eps,
+                        y=current_batch[1].detach(),
+                    )
+                    samples, n = sampling_fn(score_model)
+                    ema.restore(score_model.parameters())
+                    # t = np.linspace(0, config.data.rir_samples_count, config.data.rir_samples_count) + 1e-2
 
                 for index, sample in enumerate(samples):
                     # Sélection du premier exemple du batch pour la comparaison
                     perfect_rir_sample = (
-                        perfect_rir[0].detach().cpu().numpy()
+                        current_batch[0][0].detach().cpu().numpy()
                     )  # forme: (epaisseur=1, longueur, canaux)
                     generated_sample = (
                         sample.detach().cpu().numpy()
@@ -293,7 +298,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                         generated_sample, axis=0
                     )  # devient (longueur, canaux)
                     real_rir_sample = (
-                        real_rir[0].detach().cpu().numpy()
+                        current_batch[1][0].detach().cpu().numpy()
                     )
                     # Suppression de la dimension "épaisseur" (qui vaut 1)
                     real_rir_sample = np.squeeze(
@@ -321,7 +326,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                         signal_real = real_rir_sample[:, c]
                         axes[c].plot(signal_sample, label="Channel sample")
                         axes[c].plot(signal_perfect, label="Channel perfect")
-                        axes[c].plot(signal_real, label="Channel real")
+                        axes[c].plot(signal_real, label="Channel real",linestyle = '-', linewidth=0.5)
                         axes[c].set_ylim(bottom=-1.5, top=1.5)
 
                     axes[-1].set_xlabel("Time")
@@ -331,9 +336,11 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     fig.subplots_adjust(hspace=0)
                     fabric.logger.experiment.add_figure(f"sample_at_step_{step}", fig, index)
                     plt.close()
+                    del fig, axes, signal_sample, signal_perfect, signal_real, perfect_rir_sample, generated_sample, real_rir_sample
+                    torch.cuda.empty_cache()
 
 
-def evaluate(config, workdir, eval_folder="eval"):
+def evaluate(config, workdir, eval_folder="eval", fabric=None):
     """
     Évalue les modèles entraînés.
 
@@ -394,6 +401,20 @@ def evaluate(config, workdir, eval_folder="eval"):
             N=config.model.num_scales,
         )
         sampling_eps = 1e-5
+    elif sde_name == "ouvesde":
+        sde = sde_lib.OUVESDE(
+            sigma_min=config.model.sigma_min,
+            sigma_max=config.model.sigma_max,
+            N=config.model.num_scales,
+        )
+        sampling_eps = 1e-5
+    elif sde_name == "sbvesde":
+        sde = sde_lib.SBVESDE(
+            N=config.model.num_scales,
+            k=config.model.k,
+            c=config.model.c,
+        )
+        sampling_eps = 1e-5
     else:
         raise NotImplementedError(f"SDE {config.training.sde} inconnu.")
 
@@ -405,6 +426,7 @@ def evaluate(config, workdir, eval_folder="eval"):
         reduce_mean = config.training.reduce_mean
         eval_step = losses.get_step_fn(
             sde,
+            fabric,
             train=False,
             optimize_fn=optimize_fn,
             reduce_mean=reduce_mean,
@@ -430,10 +452,10 @@ def evaluate(config, workdir, eval_folder="eval"):
 
     if config.eval.enable_sampling:
         sampling_shape = (
-            config.eval.batch_size,
+            config.training.batch_size,
             config.data.num_channels,
-            config.data.image_size,
-            config.data.image_size,
+            config.data.rir_samples_count,
+            config.data.channels,
         )
         sampling_fn = sampling.get_sampling_fn(
             config, sde, sampling_shape, inverse_scaler, sampling_eps

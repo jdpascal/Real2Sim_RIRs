@@ -169,7 +169,6 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
     """
     # Calcul du batch_size
     batch_size = config.training.batch_size if not evaluation else config.eval.batch_size
-    # batch_size = 64
     n_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
     if batch_size % n_devices != 0:
         raise ValueError(f"Le batch size ({batch_size}) doit être divisible par le nombre de devices ({n_devices}).")

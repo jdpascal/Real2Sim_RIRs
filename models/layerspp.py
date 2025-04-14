@@ -272,7 +272,7 @@ class ResnetBlockBigGANpp(nn.Module):
     h = self.act(self.GroupNorm_1(h))
     h = self.Dropout_0(h)
     h = self.Conv_1(h)
-    h = self.act(self.GroupNorm_1(h))
+    # h = self.act(self.GroupNorm_1(h))
 
     if self.in_ch != self.out_ch or self.up or self.down:
       x = self.Conv_2(x)

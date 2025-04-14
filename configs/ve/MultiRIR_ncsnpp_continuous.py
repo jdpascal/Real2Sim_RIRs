@@ -31,8 +31,8 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 2
-    training.n_iters = 15000
-    training.snapshot_freq = 1000
+    training.n_iters = 30000
+    training.snapshot_freq = 2000
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
@@ -46,7 +46,7 @@ def get_config() -> ml_collections.ConfigDict:
 
     # sampling
     config.sampling = sampling = ml_collections.ConfigDict()
-    sampling.n_steps_each = 20
+    sampling.n_steps_each = 2
     sampling.noise_removal = True
     sampling.probability_flow = False
     sampling.snr = 0.33
@@ -71,15 +71,15 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "MultiRIR"
-    data.rir_samples_count = 512
+    data.rir_samples_count = 256
     #### don't touch first stride convolution
     data.first_stride_convolution = 1
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_2/"
-    data.num_room = 10000
+    data.npz_path = "./dataset_source_back/"
+    data.num_room = 10200
     data.pos_per_room = 10
 
     # model
@@ -97,10 +97,10 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"  # "lrelu"
     model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
-    model.ch_mult = (1,1,1,1,2,2,2) #, 2, 2, 2
-    model.num_res_blocks = 1
+    model.ch_mult = (2,2,4,4,4,4) #, 2, 2, 2
+    model.num_res_blocks = 3
     # model.attn_resolutions = (16,)
-    model.attn_resolutions = (8,)
+    model.attn_resolutions = (32,8)
     model.resamp_with_conv = True
     model.conditional = True
     model.fir = True
@@ -112,7 +112,7 @@ def get_config() -> ml_collections.ConfigDict:
     model.progressive_combine = "sum"
     model.attention_type = "ddpm"
     model.init_scale = 0.0
-    model.fourier_scale = 16
+    model.fourier_scale = 2
     model.conv_size = 3
 
 
