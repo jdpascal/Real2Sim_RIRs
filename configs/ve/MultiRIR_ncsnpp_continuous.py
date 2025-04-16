@@ -72,20 +72,19 @@ def get_config() -> ml_collections.ConfigDict:
     data.centered = False
     data.dataset = "MultiRIR"
     data.rir_samples_count = 256
-    #### don't touch first stride convolution
-    data.first_stride_convolution = 1
+    data.total_rir_samples_count = 256 # should be a multiple of rir_samples_count
+    data.begining = 0
+    data.first_stride_convolution = 1 # best results with 1, because it keeps the best resolution
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
     data.npz_path = "./dataset_source_back/"
-    data.num_room = 10200
+    data.num_room = 15000
     data.pos_per_room = 10
 
     # model
     config.model = model = ml_collections.ConfigDict()
-    # model.beta_min = 0.1
-    # model.beta_max = 20.0
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"

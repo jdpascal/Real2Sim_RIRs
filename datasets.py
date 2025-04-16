@@ -63,16 +63,15 @@ class MultiRIRDataset(Dataset):
 
         total_samples_count = config.data.total_rir_samples_count
         self.rir_chunks_count = total_samples_count // config.data.rir_samples_count
+        self.beginning = config.data.begining
         
         total = config.data.num_room * config.data.pos_per_room
         train_max_index = int(total * 0.8)
         
         if mode == "train":
             self.indices = np.arange(stop=train_max_index)
-            self.step = 1
         else:
             self.indices = np.arange(start=train_max_index, stop=total) * self.rir_chunks_count
-            # self.steps = config.data.total_samples_count % config.data.rir_samples_count
         
     def __len__(self):
         return len(self.indices)
@@ -94,10 +93,10 @@ class MultiRIRDataset(Dataset):
             room_data = json.load(json_file)
             sample = {
                 'perfect_rir': np.array(room_data['perfect_rir'])[
-                    :,chunk_index * self.config.data.rir_samples_count:(chunk_index + 1) * self.config.data.rir_samples_count
+                    :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
                 'real_rir': np.array(room_data['real_rir'])[
-                    :,chunk_index * self.config.data.rir_samples_count:(chunk_index + 1) * self.config.data.rir_samples_count
+                    :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
                 'rir_chunk_index': chunk_index,
             }
