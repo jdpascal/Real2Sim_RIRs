@@ -60,20 +60,30 @@ class MultiRIRDataset(Dataset):
         self.config = config
         self.mode = mode
         self.transform = transform
+
+        total_samples_count = config.data.total_rir_samples_count
+        self.rir_chunks_count = total_samples_count // config.data.rir_samples_count
         
         total = config.data.num_room * config.data.pos_per_room
         train_max_index = int(total * 0.8)
         
         if mode == "train":
             self.indices = np.arange(stop=train_max_index)
+            self.step = 1
         else:
-            self.indices = np.arange(start=train_max_index, stop=total)
+            self.indices = np.arange(start=train_max_index, stop=total) * self.rir_chunks_count
+            # self.steps = config.data.total_samples_count % config.data.rir_samples_count
         
     def __len__(self):
         return len(self.indices)
         
     def __getitem__(self, idx):
-        room_index = self.indices[idx]
+        if self.mode == "train":
+            room_index = self.indices[idx]
+            chunk_index = 0
+        else:
+            room_index = self.indices[idx // self.rir_chunks_count]
+            chunk_index = room_index % self.rir_chunks_count
         
         # Get room number and position number from room index using euclidean division
         room_number = int(room_index / self.config.data.pos_per_room)
@@ -83,8 +93,13 @@ class MultiRIRDataset(Dataset):
         with open(Path(self.root_dir) / room_filename, 'r') as json_file:
             room_data = json.load(json_file)
             sample = {
-                'perfect_rir': np.array(room_data['perfect_rir'])[:,:self.config.data.rir_samples_count],
-                'real_rir': np.array(room_data['real_rir'])[:,:self.config.data.rir_samples_count],
+                'perfect_rir': np.array(room_data['perfect_rir'])[
+                    :,chunk_index * self.config.data.rir_samples_count:(chunk_index + 1) * self.config.data.rir_samples_count
+                ],
+                'real_rir': np.array(room_data['real_rir'])[
+                    :,chunk_index * self.config.data.rir_samples_count:(chunk_index + 1) * self.config.data.rir_samples_count
+                ],
+                'rir_chunk_index': chunk_index,
             }
 
         if self.transform:
@@ -98,59 +113,6 @@ class MultiRIRDataset(Dataset):
             sample['real_rir'] = sample['real_rir'][:, None, :].astype(np.float32)
 
         return sample
-
-# class MultiRIRDataset(Dataset):
-#     def __init__(self, npz_path, split='train', config=None, transform=None):
-#         if not os.path.exists(npz_path):
-#             raise ValueError(f"Le fichier NPZ {npz_path} n'existe pas.")
-        
-#         # data = {'real_rir': [], 'perfect_rir': []}
-#         # for room_index in range(config.data.num_room):
-#         #     for position_index in range(config.data.pos_per_room):
-#         #         with open(npz_path  + f"room_{room_index}_{position_index}.json", 'r') as json_file:
-#         #             data_room = json.load(json_file)
-#         #             data['real_rir'].append(data_room['real_rir'])
-#         #             data['perfect_rir'].append(data_room['perfect_rir'])
-#         #             # data['condition'].append(data_room['condition'])  if 'condition' in data_room.keys() else None
-
-#         with open(npz_path + "data.json", "r") as json_file:
-#             data = json.load(json_file)
-        
-#         self.X = data['perfect_rir']
-#         self.Y = data['real_rir']
-#         self.condition = data['condition'] if 'condition' in data.keys() else None
-
-#         total = len(self.X)
-#         split_idx = int(0.8 * total)  # 80% pour l'entraînement, 20% pour l'évaluation
-#         if split == 'train':
-#             self.indices = np.arange(split_idx)
-#         else:
-#             self.indices = np.arange(split_idx, total)
-
-#         self.transform = transform
-
-#     def __len__(self):
-#         return len(self.indices)
-
-#     def __getitem__(self, idx):
-#         i = self.indices[idx]
-#         sample = {
-#             'perfect_rir': self.X[i],
-#             'real_rir': self.Y[i]
-#         }
-#         if self.condition is not None:
-#             sample['condition'] = self.condition[i]
-#         if self.transform:
-#             sample = self.transform(sample)
-#         else:
-#             # Conversion basique en tenseurs
-#             sample['perfect_rir'] = torch.FloatTensor(sample['perfect_rir'])
-#             sample['real_rir'] = torch.FloatTensor(sample['real_rir'])
-#             sample['perfect_rir'] = sample['perfect_rir'][:, None, :]
-#             sample['real_rir'] = sample['real_rir'][:, None, :]
-#             if 'condition' in sample:
-#                 sample['condition'] = torch.FloatTensor(sample['condition'])
-#         return sample
 
 # -------------------------
 # Fonction principale pour créer les DataLoaders
@@ -173,87 +135,8 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
     if batch_size % n_devices != 0:
         raise ValueError(f"Le batch size ({batch_size}) doit être divisible par le nombre de devices ({n_devices}).")
 
-    # Fonction utilitaire pour éventuellement ajouter la déquantification uniforme
-    def maybe_dequantize():
-        if uniform_dequantization:
-            return transforms.Lambda(lambda x: (x * 255 + torch.rand_like(x)) / 256)
-        else:
-            return transforms.Lambda(lambda x: x)
-
     # En fonction du dataset, on définit les transformations et on crée le dataset
-    if config.data.dataset == 'CIFAR10':
-        transform_list = [
-            transforms.Resize((config.data.image_size, config.data.image_size),
-                              interpolation=transforms.InterpolationMode.BICUBIC)
-        ]
-        if config.data.random_flip and not evaluation:
-            transform_list.append(transforms.RandomHorizontalFlip())
-        transform_list.extend([
-            transforms.ToTensor(),
-            maybe_dequantize()
-        ])
-        transform = transforms.Compose(transform_list)
-        train_dataset = datasets.CIFAR10(root=config.data.data_dir,
-                                         train=True, transform=transform, download=True)
-        eval_dataset = datasets.CIFAR10(root=config.data.data_dir,
-                                        train=False, transform=transform, download=True)
-
-    elif config.data.dataset == 'SVHN':
-        transform_list = [
-            transforms.Resize((config.data.image_size, config.data.image_size),
-                              interpolation=transforms.InterpolationMode.BICUBIC)
-        ]
-        if config.data.random_flip and not evaluation:
-            transform_list.append(transforms.RandomHorizontalFlip())
-        transform_list.extend([
-            transforms.ToTensor(),
-            maybe_dequantize()
-        ])
-        transform = transforms.Compose(transform_list)
-        train_dataset = datasets.SVHN(root=config.data.data_dir,
-                                      split='train', transform=transform, download=True)
-        eval_dataset = datasets.SVHN(root=config.data.data_dir,
-                                     split='test', transform=transform, download=True)
-
-    elif config.data.dataset == 'CELEBA':
-        transform_list = [
-            transforms.CenterCrop(140),
-            transforms.Resize((config.data.image_size, config.data.image_size),
-                              interpolation=transforms.InterpolationMode.BICUBIC)
-        ]
-        if config.data.random_flip and not evaluation:
-            transform_list.append(transforms.RandomHorizontalFlip())
-        transform_list.extend([
-            transforms.ToTensor(),
-            maybe_dequantize()
-        ])
-        transform = transforms.Compose(transform_list)
-        train_dataset = datasets.CelebA(root=config.data.data_dir,
-                                        split='train', transform=transform, download=True)
-        eval_dataset = datasets.CelebA(root=config.data.data_dir,
-                                       split='valid', transform=transform, download=True)
-
-    elif config.data.dataset == 'LSUN':
-        # Pour LSUN, le paramètre config.data.category doit être défini (ex. 'bedroom')
-        if config.data.image_size == 128:
-            transform = transforms.Compose([
-                transforms.Resize(128),
-                transforms.CenterCrop(128),
-                transforms.ToTensor(),
-                maybe_dequantize()
-            ])
-        else:
-            transform = transforms.Compose([
-                transforms.Lambda(lambda img: crop_resize(img, config.data.image_size)),
-                transforms.ToTensor(),
-                maybe_dequantize()
-            ])
-        train_dataset = datasets.LSUN(root=config.data.data_dir,
-                                      classes=[config.data.category], transform=transform, split='train')
-        eval_dataset = datasets.LSUN(root=config.data.data_dir,
-                                     classes=[config.data.category], transform=transform, split='val')
-
-    elif config.data.dataset == 'MultiRIR':
+    if config.data.dataset == 'MultiRIR':
         # On charge le fichier NPZ et on crée un dataset personnalisé.
         train_dataset = MultiRIRDataset(
             root_dir=config.data.npz_path,
@@ -267,10 +150,6 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
             mode="eval",
             # transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
         )
-
-    elif config.data.dataset in ['FFHQ', 'CelebAHQ']:
-        raise NotImplementedError(f"Le dataset {config.data.dataset} n'est pas encore implémenté pour PyTorch.")
-
     else:
         raise NotImplementedError(f"Dataset {config.data.dataset} non supporté.")
 

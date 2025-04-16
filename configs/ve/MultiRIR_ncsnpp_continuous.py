@@ -31,7 +31,7 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 2
-    training.n_iters = 30000
+    training.n_iters = 60000
     training.snapshot_freq = 2000
     training.log_freq = 100
     training.eval_freq = 100
@@ -121,7 +121,7 @@ def get_config() -> ml_collections.ConfigDict:
     config.optim = optim = ml_collections.ConfigDict()
     optim.weight_decay = 0
     optim.optimizer = "Adam"
-    optim.lr = 2e-4
+    optim.lr = 2e-5
     optim.beta1 = 0.9
     optim.eps = 1e-8
     optim.warmup = 5000

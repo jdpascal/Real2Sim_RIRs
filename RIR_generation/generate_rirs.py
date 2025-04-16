@@ -18,7 +18,7 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 10000
+num_room = 15000
 positions_per_room = 10
 distance_src_mics = 1
 dist_mur = 1
@@ -283,7 +283,7 @@ def main():
     logger.info("Début de la génération des données.")
 
     configurations = []
-    for room_index in range(0, num_room):
+    for room_index in range(10000, num_room):
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]

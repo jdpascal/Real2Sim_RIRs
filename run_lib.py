@@ -151,18 +151,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         likelihood_weighting=likelihood_weighting,
     )
 
-    # Construction de la fonction de sampling si nécessaire.
-    if config.training.snapshot_sampling:
-        sampling_shape = (
-            config.training.batch_size,
-            config.data.num_channels,
-            config.data.rir_samples_count,
-            config.data.channels,
-        )
-        sampling_fn = sampling.get_sampling_fn(
-            config, sde, sampling_shape, inverse_scaler, sampling_eps
-        )
-
     num_train_steps = config.training.n_iters
     logging.info("Début de la boucle d'entraînement à l'étape %d.", initial_step)
 
@@ -231,7 +219,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             except StopIteration:
                 eval_iter = iter(eval_loader)
                 eval_batch = next(eval_iter)
-            # Ici, on suppose que le dataset d'évaluation renvoie la clé 'image'.
+            # Ici, on suppose que le dataset d'évaluation renvoie la clé 'perfect_rir' et 'real_rir'.
             eval_img_perfect = eval_batch["perfect_rir"].to(fabric.device).detach()
             eval_img_real = eval_batch["real_rir"].to(fabric.device).detach()
             # print("avant permute ? eval perfect, real" , eval_img_perfect.shape, eval_img_real.shape)
@@ -266,6 +254,12 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
 
             # Génération d'échantillons.
             if config.training.snapshot_sampling:
+                sampling_shape = (
+                        config.training.batch_size,
+                        config.data.num_channels,
+                        config.data.rir_samples_count,
+                        config.data.channels,
+                    )
                 optimizer.zero_grad()
                 with torch.no_grad():
                     ema.store(score_model.parameters())
@@ -317,16 +311,12 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = (generated_sample[:, c]) 
-                        # / np.max( generated_sample )
-                        # signal_sample = signal_sample 
-                        #/ np.sqrt(t) - 0.5
-                        # / np.max( generated_sample[:, c] )
+                        signal_sample = generated_sample[:, c]
                         signal_perfect = perfect_rir_sample[:, c] 
                         signal_real = real_rir_sample[:, c]
-                        axes[c].plot(signal_sample, label="Channel sample")
-                        axes[c].plot(signal_perfect, label="Channel perfect")
-                        axes[c].plot(signal_real, label="Channel real",linestyle = '-', linewidth=0.5)
+                        axes[c].plot(signal_sample, label="Generated RIR")
+                        axes[c].plot(signal_perfect, label="Perfect RIR")
+                        axes[c].plot(signal_real, label="Real RIR",linestyle = '-', linewidth=0.5)
                         axes[c].set_ylim(bottom=-1.5, top=1.5)
 
                     axes[-1].set_xlabel("Time")
@@ -340,14 +330,288 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     torch.cuda.empty_cache()
 
 
+# def evaluate(config, workdir, eval_folder="eval", fabric=None):
+#     """
+#     Évalue les modèles entraînés.
+
+#     Args:
+#         config: Objet de configuration.
+#         workdir: Répertoire de travail contenant les checkpoints.
+#         eval_folder: Sous-dossier pour stocker les résultats d'évaluation.
+#     """
+#     eval_dir = os.path.join(workdir, eval_folder)
+#     os.makedirs(eval_dir, exist_ok=True)
+
+#     # Chargement des DataLoaders en mode évaluation.
+#     _, eval_loader, _ = datasets.get_dataset(
+#         config,
+#         uniform_dequantization=config.data.uniform_dequantization,
+#         evaluation=True,
+#     )
+
+#     scaler = datasets.get_data_scaler(config)
+#     inverse_scaler = datasets.get_data_inverse_scaler(config)
+
+#     # Initialisation du modèle, de l'optimizer et de l'EMA.
+#     score_model = mutils.create_model(config)
+#     optimizer = losses.get_optimizer(config, score_model.parameters())
+#     ema = ExponentialMovingAverage(
+#         score_model.parameters(), decay=config.model.ema_rate
+#     )
+#     state = dict(optimizer=optimizer, model=score_model, ema=ema, step=0)
+
+#     checkpoint_dir = os.path.join(workdir, "checkpoints")
+
+#     # Configuration de la SDE.
+#     sde_name = config.training.sde.lower()
+#     if sde_name == "vpsde":
+#         sde = sde_lib.VPSDE(
+#             beta_min=config.model.beta_min,
+#             beta_max=config.model.beta_max,
+#             N=config.model.num_scales,
+#         )
+#     elif sde_name == "subvpsde":
+#         sde = sde_lib.subVPSDE(
+#             beta_min=config.model.beta_min,
+#             beta_max=config.model.beta_max,
+#             N=config.model.num_scales,
+#         )
+#         sampling_eps = 1e-3
+#     elif sde_name == "vesde":
+#         sde = sde_lib.VESDE(
+#             sigma_min=config.model.sigma_min,
+#             sigma_max=config.model.sigma_max,
+#             N=config.model.num_scales,
+#         )
+#         sampling_eps = 1e-5
+#     elif sde_name == "ouvesde":
+#         sde = sde_lib.OUVESDE(
+#             sigma_min=config.model.sigma_min,
+#             sigma_max=config.model.sigma_max,
+#             N=config.model.num_scales,
+#         )
+#         sampling_eps = 1e-5
+#     elif sde_name == "sbvesde":
+#         sde = sde_lib.SBVESDE(
+#             N=config.model.num_scales,
+#             k=config.model.k,
+#             c=config.model.c,
+#         )
+#         sampling_eps = 1e-5
+#     else:
+#         raise NotImplementedError(f"SDE {config.training.sde} inconnu.")
+
+#     # Création de la fonction d'évaluation de la loss si activée.
+#     if config.eval.enable_loss:
+#         optimize_fn = losses.optimization_manager(config)
+#         continuous = config.training.continuous
+#         likelihood_weighting = config.training.likelihood_weighting
+#         reduce_mean = config.training.reduce_mean
+#         eval_step = losses.get_step_fn(
+#             sde,
+#             fabric,
+#             train=False,
+#             optimize_fn=optimize_fn,
+#             reduce_mean=reduce_mean,
+#             continuous=continuous,
+#             likelihood_weighting=likelihood_weighting,
+#         )
+
+#     # Pour le calcul de la vraisemblance (bits/dim), on choisit le dataset.
+#     train_loader_bpd, eval_loader_bpd, _ = datasets.get_dataset(
+#         config, uniform_dequantization=True, evaluation=True
+#     )
+#     if config.eval.bpd_dataset.lower() == "train":
+#         ds_bpd = train_loader_bpd
+#         bpd_num_repeats = 1
+#     elif config.eval.bpd_dataset.lower() == "test":
+#         ds_bpd = eval_loader_bpd
+#         bpd_num_repeats = 5
+#     else:
+#         raise ValueError(f"Dataset bpd {config.eval.bpd_dataset} non reconnu.")
+
+#     if config.eval.enable_bpd:
+#         likelihood_fn = likelihood.get_likelihood_fn(sde, inverse_scaler)
+
+#     if config.eval.enable_sampling:
+#         sampling_shape = (
+#             config.training.batch_size,
+#             config.data.num_channels,
+#             config.data.rir_samples_count,
+#             config.data.channels,
+#         )
+#         sampling_fn = sampling.get_sampling_fn(
+#             config, sde, sampling_shape, inverse_scaler, sampling_eps
+#         )
+
+#     inceptionv3 = config.data.image_size >= 256
+#     # On suppose que evaluation.get_inception_model renvoie un modèle Inception adapté en PyTorch.
+#     inception_model = evaluation.get_inception_model(inceptionv3=inceptionv3)
+
+#     begin_ckpt = config.eval.begin_ckpt
+#     logging.info("Début de l'évaluation à partir du checkpoint %d.", begin_ckpt)
+
+#     for ckpt in range(begin_ckpt, config.eval.end_ckpt + 1):
+#         ckpt_filename = os.path.join(checkpoint_dir, f"checkpoint_{ckpt}.pth")
+#         waiting_message_printed = False
+#         while not os.path.exists(ckpt_filename):
+#             if not waiting_message_printed:
+#                 logging.warning("En attente du checkpoint_%d", ckpt)
+#                 waiting_message_printed = True
+#             time.sleep(60)
+ 
+#         # Tentative de chargement du checkpoint.
+#         try:
+#             state = restore_checkpoint(ckpt_filename, state)
+#         except Exception:
+#             logging.warning(
+#                 "Problème lors du chargement du checkpoint, nouvelle tentative dans 60s..."
+#             )
+#             time.sleep(60)
+#             try:
+#                 state = restore_checkpoint(ckpt_filename, state)
+#             except Exception:
+#                 time.sleep(120)
+#                 state = restore_checkpoint(ckpt_filename, state)
+
+#         ema.copy_to(score_model.parameters())
+
+#         # Évaluation de la loss sur l'ensemble du dataset d'évaluation.
+#         if config.eval.enable_loss:
+#             all_losses = []
+#             for i, batch in enumerate(eval_loader):
+#                 img = batch["image"]
+#                 if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
+#                     img = img.permute(0, 3, 1, 2)
+#                 img = scaler(img)
+#                 loss_val = eval_step(state, img)
+#                 all_losses.append(loss_val.item())
+#                 if (i + 1) % 1000 == 0:
+#                     logging.info(
+#                         "Évaluation loss, étape %d sur %d", i + 1, len(eval_loader)
+#                     )
+#             all_losses = np.asarray(all_losses)
+#             loss_filepath = os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz")
+#             with open(loss_filepath, "wb") as f:
+#                 np.savez_compressed(
+#                     f, all_losses=all_losses, mean_loss=all_losses.mean()
+#                 )
+
+#         # Calcul de la vraisemblance (bits/dim) si activé.
+#         if config.eval.enable_bpd:
+#             bpds = []
+#             for repeat in range(bpd_num_repeats):
+#                 bpd_iter = iter(ds_bpd)
+#                 for batch_id, batch in enumerate(bpd_iter):
+#                     img = batch["image"]
+#                     if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
+#                         img = img.permute(0, 3, 1, 2)
+#                     img = scaler(img)
+#                     bpd_val = likelihood_fn(score_model, img)[0]
+#                     bpd_val = bpd_val.detach().cpu().numpy().reshape(-1)
+#                     bpds.extend(bpd_val)
+#                     logging.info(
+#                         "ckpt: %d, repeat: %d, batch: %d, moyenne bpd: %.6f",
+#                         ckpt,
+#                         repeat,
+#                         batch_id,
+#                         np.mean(np.asarray(bpds)),
+#                     )
+#                     bpd_round_id = batch_id + len(ds_bpd) * repeat
+#                     bpd_filepath = os.path.join(
+#                         eval_dir,
+#                         f"{config.eval.bpd_dataset}_ckpt_{ckpt}_bpd_{bpd_round_id}.npz",
+#                     )
+#                     with open(bpd_filepath, "wb") as f:
+#                         np.savez_compressed(f, bpds=bpds)
+
+#         # Génération d'échantillons et calcul des métriques IS/FID/KID si activés.
+#         if config.eval.enable_sampling:
+#             num_sampling_rounds = config.eval.num_samples // config.eval.batch_size + 1
+#             for r in range(num_sampling_rounds):
+#                 logging.info("Sampling -- ckpt: %d, round: %d", ckpt, r)
+#                 this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
+#                 os.makedirs(this_sample_dir, exist_ok=True)
+#                 samples, n = sampling_fn(score_model)
+#                 samples_np = np.clip(
+#                     samples.permute(0, 2, 3, 1).cpu().numpy() * 255.0, 0, 255
+#                 ).astype(np.uint8)
+#                 samples_np = samples_np.reshape(
+#                     (
+#                         -1,
+#                         config.data.image_size,
+#                         config.data.image_size,
+#                         config.data.num_channels,
+#                     )
+#                 )
+#                 samples_filepath = os.path.join(this_sample_dir, f"samples_{r}.npz")
+#                 np.savez_compressed(samples_filepath, samples=samples_np)
+
+#                 gc.collect()
+#                 # On suppose que evaluation.run_inception_distributed est adapté à PyTorch.
+#                 latents = evaluation.run_inception_distributed(
+#                     samples_np, inception_model, inceptionv3=inceptionv3
+#                 )
+#                 gc.collect()
+#                 stats_filepath = os.path.join(this_sample_dir, f"statistics_{r}.npz")
+#                 with open(stats_filepath, "wb") as f:
+#                     np.savez_compressed(
+#                         f, pool_3=latents["pool_3"], logits=latents["logits"]
+#                     )
+
+#             # Récupération de toutes les statistiques pour le calcul des métriques.
+#             all_logits = []
+#             all_pools = []
+#             this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
+#             stats_files = glob.glob(os.path.join(this_sample_dir, "statistics_*.npz"))
+#             for stat_file in stats_files:
+#                 with open(stat_file, "rb") as f:
+#                     stat = np.load(f)
+#                     if not inceptionv3:
+#                         all_logits.append(stat["logits"])
+#                     all_pools.append(stat["pool_3"])
+
+#             if not inceptionv3:
+#                 all_logits = np.concatenate(all_logits, axis=0)[
+#                     : config.eval.num_samples
+#                 ]
+#             all_pools = np.concatenate(all_pools, axis=0)[: config.eval.num_samples]
+
+#             # Chargement des statistiques du dataset de référence.
+#             data_stats = evaluation.load_dataset_stats(config)
+#             data_pools = data_stats["pool_3"]
+
+#             # Calcul des métriques.
+#             # Vous devrez remplacer ces appels par des fonctions PyTorch adaptées (ex. via pytorch-fid).
+#             if not inceptionv3:
+#                 inception_score = evaluation.compute_inception_score(all_logits)
+#             else:
+#                 inception_score = -1
+
+#             fid = evaluation.compute_fid(data_pools, all_pools)
+#             kid = evaluation.compute_kid(data_pools, all_pools)
+
+#             logging.info(
+#                 "ckpt-%d --- inception_score: %.6e, FID: %.6e, KID: %.6e",
+#                 ckpt,
+#                 inception_score,
+#                 fid,
+#                 kid,
+#             )
+
+#             report_filepath = os.path.join(eval_dir, f"report_{ckpt}.npz")
+#             with open(report_filepath, "wb") as f:
+#                 np.savez_compressed(f, IS=inception_score, fid=fid, kid=kid)
+
+
 def evaluate(config, workdir, eval_folder="eval", fabric=None):
     """
     Évalue les modèles entraînés.
-
     Args:
         config: Objet de configuration.
         workdir: Répertoire de travail contenant les checkpoints.
         eval_folder: Sous-dossier pour stocker les résultats d'évaluation.
+        fabric: Fabric pour la gestion des ressources distribuées.
     """
     eval_dir = os.path.join(workdir, eval_folder)
     os.makedirs(eval_dir, exist_ok=True)
@@ -359,7 +623,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
         evaluation=True,
     )
 
-    scaler = datasets.get_data_scaler(config)
+    # scaler = datasets.get_data_scaler(config)
     inverse_scaler = datasets.get_data_inverse_scaler(config)
 
     # Initialisation du modèle, de l'optimizer et de l'EMA.
@@ -374,34 +638,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
 
     # Configuration de la SDE.
     sde_name = config.training.sde.lower()
-    if sde_name == "vpsde":
-        sde = sde_lib.VPSDE(
-            beta_min=config.model.beta_min,
-            beta_max=config.model.beta_max,
-            N=config.model.num_scales,
-        )
     if sde_name == "ouvesde":
-        sde = sde_lib.OUVESDE(
-            beta_min=config.model.beta_min,
-            beta_max=config.model.beta_max,
-            N=config.model.num_scales,
-        )
-        sampling_eps = 1e-3
-    elif sde_name == "subvpsde":
-        sde = sde_lib.subVPSDE(
-            beta_min=config.model.beta_min,
-            beta_max=config.model.beta_max,
-            N=config.model.num_scales,
-        )
-        sampling_eps = 1e-3
-    elif sde_name == "vesde":
-        sde = sde_lib.VESDE(
-            sigma_min=config.model.sigma_min,
-            sigma_max=config.model.sigma_max,
-            N=config.model.num_scales,
-        )
-        sampling_eps = 1e-5
-    elif sde_name == "ouvesde":
         sde = sde_lib.OUVESDE(
             sigma_min=config.model.sigma_min,
             sigma_max=config.model.sigma_max,
@@ -434,21 +671,8 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
             likelihood_weighting=likelihood_weighting,
         )
 
-    # Pour le calcul de la vraisemblance (bits/dim), on choisit le dataset.
-    train_loader_bpd, eval_loader_bpd, _ = datasets.get_dataset(
-        config, uniform_dequantization=True, evaluation=True
-    )
-    if config.eval.bpd_dataset.lower() == "train":
-        ds_bpd = train_loader_bpd
-        bpd_num_repeats = 1
-    elif config.eval.bpd_dataset.lower() == "test":
-        ds_bpd = eval_loader_bpd
-        bpd_num_repeats = 5
-    else:
-        raise ValueError(f"Dataset bpd {config.eval.bpd_dataset} non reconnu.")
-
-    if config.eval.enable_bpd:
-        likelihood_fn = likelihood.get_likelihood_fn(sde, inverse_scaler)
+    # if config.eval.enable_bpd:
+    #     likelihood_fn = likelihood.get_likelihood_fn(sde, inverse_scaler)
 
     if config.eval.enable_sampling:
         sampling_shape = (
@@ -457,16 +681,13 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
             config.data.rir_samples_count,
             config.data.channels,
         )
-        sampling_fn = sampling.get_sampling_fn(
-            config, sde, sampling_shape, inverse_scaler, sampling_eps
-        )
-
-    inceptionv3 = config.data.image_size >= 256
-    # On suppose que evaluation.get_inception_model renvoie un modèle Inception adapté en PyTorch.
-    inception_model = evaluation.get_inception_model(inceptionv3=inceptionv3)
 
     begin_ckpt = config.eval.begin_ckpt
     logging.info("Début de l'évaluation à partir du checkpoint %d.", begin_ckpt)
+
+    # Log all configuration in tensorboard
+    if fabric.is_global_zero:
+        fabric.logger.log_hyperparams(config.to_dict())
 
     for ckpt in range(begin_ckpt, config.eval.end_ckpt + 1):
         ckpt_filename = os.path.join(checkpoint_dir, f"checkpoint_{ckpt}.pth")
@@ -493,129 +714,124 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
 
         ema.copy_to(score_model.parameters())
 
+        # on garde une copie de la première rir
+        rir_chunks_count = config.data.total_rir_samples_count / config.data.rir_samples_count 
+
         # Évaluation de la loss sur l'ensemble du dataset d'évaluation.
         if config.eval.enable_loss:
-            all_losses = []
+            all_losses = {}
+            for i in range(int(rir_chunks_count)):
+                all_losses[i] = []
             for i, batch in enumerate(eval_loader):
-                img = batch["image"]
-                if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
-                    img = img.permute(0, 3, 1, 2)
-                img = scaler(img)
-                loss_val = eval_step(state, img)
-                all_losses.append(loss_val.item())
-                if (i + 1) % 1000 == 0:
+                perfect_rir, real_rir, chunk_index = batch["perfect_rir"], batch["real_rir"], batch['rir_chunk_index']
+
+                if real_rir.ndim == 4 and real_rir.shape[-1] != config.data.num_channels:
+                    real_rir = real_rir.permute(0, 2, 3, 1)
+
+                if perfect_rir.ndim == 4 and perfect_rir.shape[-1] != config.data.num_channels:
+                    perfect_rir = perfect_rir.permute(0, 2, 3, 1)
+
+                eval_batch = perfect_rir, real_rir
+                loss_eval = eval_step(state, eval_batch)
+                del eval_batch
+                all_losses[chunk_index].append(loss_eval.item())
+
+                if i <= rir_chunks_count:
+                    if i == 0:
+                        big_rir_generated = np.zeros(
+                            (config.data.total_rir_samples_count, config.data.channels)
+                        )
+                        big_rir_perfect = np.zeros( 
+                            (config.data.total_rir_samples_count, config.data.channels)
+                        )
+                        big_rir_real = np.zeros(
+                            (config.data.total_rir_samples_count, config.data.channels)
+                        )
+                    # On remplit le tableau avec les valeurs de la batch
+                    sampling_fn = sampling.get_sampling_fn(
+                            config,
+                            sde,
+                            sampling_shape,
+                            inverse_scaler,
+                            sampling_eps,
+                            y=real_rir.detach(),
+                    )
+                    # Génération d'échantillons.
+                    this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
+                    os.makedirs(this_sample_dir, exist_ok=True)
+                    samples, n = sampling_fn(score_model)
+                    # Sélection du premier exemple du batch pour la comparaison
+                    perfect_rir_sample = (
+                            perfect_rir[0].detach().cpu().numpy()
+                        )  # forme: (epaisseur=1, longueur, canaux)
+                                        # Suppression de la dimension "épaisseur" (qui vaut 1)
+                    perfect_rir_sample = np.squeeze(
+                            perfect_rir_sample, axis=0
+                        )  # devient (longueur, canaux)
+                    real_rir_sample = (
+                            real_rir[0].detach().cpu().numpy()
+                        )
+                        # Suppression de la dimension "épaisseur" (qui vaut 1)
+                    real_rir_sample = np.squeeze(
+                            real_rir_sample, axis=0
+                        )  # devient (longueur, canaux)
+                    generated_sample = (
+                            samples[-1].detach().cpu().numpy()
+                        )  # forme: (epaisseur=1, longueur, canaux)
+                    generated_sample = np.squeeze(
+                            generated_sample, axis=0
+                        )  # devient (longueur, canaux)
+                    big_rir_generated = big_rir_generated[ i * config.data.rir_samples_count : (i + 1) * config.data.rir_samples_count, : ]
+                    big_rir_perfect = big_rir_perfect[ i * config.data.rir_samples_count : (i + 1) * config.data.rir_samples_count, : ]
+                    big_rir_real = big_rir_real[ i * config.data.rir_samples_count : (i + 1) * config.data.rir_samples_count, : ]
+
+
+                    # On trace jusqu'à 32 canaux (ou le nombre maximum de canaux disponibles)
+                    plt.ioff()
+                    num_channels = min(32, perfect_rir_sample.shape[1])
+                    fig, axes = plt.subplots(
+                        nrows=num_channels,
+                        ncols=1,
+                        sharex=True,
+                        figsize=(12,24),
+                        layout="constrained",
+                    )
+                    for c in range(num_channels):
+                        # Puisque ce sont des signaux 1D, on les trace directement.
+                        signal_sample = generated_sample[:, c]
+                        signal_perfect = perfect_rir_sample[:, c] 
+                        signal_real = real_rir_sample[:, c]
+                        axes[c].plot(signal_sample, label="Generated RIR")
+                        axes[c].plot(signal_perfect, label="Perfect RIR")
+                        axes[c].plot(signal_real, label="Real RIR",linestyle = '-', linewidth=0.5)
+                        axes[c].set_ylim(bottom=-1.5, top=1.5)
+                    
+                    axes[-1].set_xlabel("Time")
+                    axes[-1].legend()
+                    fig.suptitle("Signal per channels")
+                    # fig.tight_layout()
+                    fig.subplots_adjust(hspace=0)
+                    fabric.logger.experiment.add_figure(f"sample_at_step_{step}", fig, index)
+                    plt.close()
+                    del fig, axes, signal_sample, signal_perfect, signal_real, perfect_rir_sample, generated_sample, real_rir_sample
+                    torch.cuda.empty_cache()
+                    
+                
+                step = state["step"]
+                # Gather loss from all processes, log value only on process with rank 0
+                if fabric.is_global_zero and (i + 1) % 1000 == 0:
+                    fabric.log("evaluation loss", loss.item(), step)
                     logging.info(
                         "Évaluation loss, étape %d sur %d", i + 1, len(eval_loader)
                     )
+                    
+
             all_losses = np.asarray(all_losses)
             loss_filepath = os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz")
             with open(loss_filepath, "wb") as f:
                 np.savez_compressed(
                     f, all_losses=all_losses, mean_loss=all_losses.mean()
                 )
+            
 
-        # Calcul de la vraisemblance (bits/dim) si activé.
-        if config.eval.enable_bpd:
-            bpds = []
-            for repeat in range(bpd_num_repeats):
-                bpd_iter = iter(ds_bpd)
-                for batch_id, batch in enumerate(bpd_iter):
-                    img = batch["image"]
-                    if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
-                        img = img.permute(0, 3, 1, 2)
-                    img = scaler(img)
-                    bpd_val = likelihood_fn(score_model, img)[0]
-                    bpd_val = bpd_val.detach().cpu().numpy().reshape(-1)
-                    bpds.extend(bpd_val)
-                    logging.info(
-                        "ckpt: %d, repeat: %d, batch: %d, moyenne bpd: %.6f",
-                        ckpt,
-                        repeat,
-                        batch_id,
-                        np.mean(np.asarray(bpds)),
-                    )
-                    bpd_round_id = batch_id + len(ds_bpd) * repeat
-                    bpd_filepath = os.path.join(
-                        eval_dir,
-                        f"{config.eval.bpd_dataset}_ckpt_{ckpt}_bpd_{bpd_round_id}.npz",
-                    )
-                    with open(bpd_filepath, "wb") as f:
-                        np.savez_compressed(f, bpds=bpds)
-
-        # Génération d'échantillons et calcul des métriques IS/FID/KID si activés.
-        if config.eval.enable_sampling:
-            num_sampling_rounds = config.eval.num_samples // config.eval.batch_size + 1
-            for r in range(num_sampling_rounds):
-                logging.info("Sampling -- ckpt: %d, round: %d", ckpt, r)
-                this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
-                os.makedirs(this_sample_dir, exist_ok=True)
-                samples, n = sampling_fn(score_model)
-                samples_np = np.clip(
-                    samples.permute(0, 2, 3, 1).cpu().numpy() * 255.0, 0, 255
-                ).astype(np.uint8)
-                samples_np = samples_np.reshape(
-                    (
-                        -1,
-                        config.data.image_size,
-                        config.data.image_size,
-                        config.data.num_channels,
-                    )
-                )
-                samples_filepath = os.path.join(this_sample_dir, f"samples_{r}.npz")
-                np.savez_compressed(samples_filepath, samples=samples_np)
-
-                gc.collect()
-                # On suppose que evaluation.run_inception_distributed est adapté à PyTorch.
-                latents = evaluation.run_inception_distributed(
-                    samples_np, inception_model, inceptionv3=inceptionv3
-                )
-                gc.collect()
-                stats_filepath = os.path.join(this_sample_dir, f"statistics_{r}.npz")
-                with open(stats_filepath, "wb") as f:
-                    np.savez_compressed(
-                        f, pool_3=latents["pool_3"], logits=latents["logits"]
-                    )
-
-            # Récupération de toutes les statistiques pour le calcul des métriques.
-            all_logits = []
-            all_pools = []
-            this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
-            stats_files = glob.glob(os.path.join(this_sample_dir, "statistics_*.npz"))
-            for stat_file in stats_files:
-                with open(stat_file, "rb") as f:
-                    stat = np.load(f)
-                    if not inceptionv3:
-                        all_logits.append(stat["logits"])
-                    all_pools.append(stat["pool_3"])
-
-            if not inceptionv3:
-                all_logits = np.concatenate(all_logits, axis=0)[
-                    : config.eval.num_samples
-                ]
-            all_pools = np.concatenate(all_pools, axis=0)[: config.eval.num_samples]
-
-            # Chargement des statistiques du dataset de référence.
-            data_stats = evaluation.load_dataset_stats(config)
-            data_pools = data_stats["pool_3"]
-
-            # Calcul des métriques.
-            # Vous devrez remplacer ces appels par des fonctions PyTorch adaptées (ex. via pytorch-fid).
-            if not inceptionv3:
-                inception_score = evaluation.compute_inception_score(all_logits)
-            else:
-                inception_score = -1
-
-            fid = evaluation.compute_fid(data_pools, all_pools)
-            kid = evaluation.compute_kid(data_pools, all_pools)
-
-            logging.info(
-                "ckpt-%d --- inception_score: %.6e, FID: %.6e, KID: %.6e",
-                ckpt,
-                inception_score,
-                fid,
-                kid,
-            )
-
-            report_filepath = os.path.join(eval_dir, f"report_{ckpt}.npz")
-            with open(report_filepath, "wb") as f:
-                np.savez_compressed(f, IS=inception_score, fid=fid, kid=kid)
+            
