@@ -715,10 +715,11 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
         ema.copy_to(score_model.parameters())
 
         # on garde une copie de la première rir
-        rir_chunks_count = config.data.total_rir_samples_count / config.data.rir_samples_count 
+        rir_chunks_count = config.data.total_rir_samples_count // config.data.rir_samples_count 
 
         # Évaluation de la loss sur l'ensemble du dataset d'évaluation.
         if config.eval.enable_loss:
+            step = state["step"]
             all_losses = {}
             for i in range(int(rir_chunks_count)):
                 all_losses[i] = []
@@ -778,6 +779,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     generated_sample = (
                             samples[-1].detach().cpu().numpy()
                         )  # forme: (epaisseur=1, longueur, canaux)
+                    del samples
                     generated_sample = np.squeeze(
                             generated_sample, axis=0
                         )  # devient (longueur, canaux)
@@ -798,9 +800,9 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     )
                     for c in range(num_channels):
                         # Puisque ce sont des signaux 1D, on les trace directement.
-                        signal_sample = generated_sample[:, c]
-                        signal_perfect = perfect_rir_sample[:, c] 
-                        signal_real = real_rir_sample[:, c]
+                        signal_sample = big_rir_generated[:, c]
+                        signal_perfect = big_rir_perfect[:, c] 
+                        signal_real = big_rir_real[:, c]
                         axes[c].plot(signal_sample, label="Generated RIR")
                         axes[c].plot(signal_perfect, label="Perfect RIR")
                         axes[c].plot(signal_real, label="Real RIR",linestyle = '-', linewidth=0.5)
@@ -811,27 +813,30 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     fig.suptitle("Signal per channels")
                     # fig.tight_layout()
                     fig.subplots_adjust(hspace=0)
-                    fabric.logger.experiment.add_figure(f"sample_at_step_{step}", fig, index)
+                    fabric.logger.experiment.add_figure(f"sample_at_step_{step}", fig)
                     plt.close()
                     del fig, axes, signal_sample, signal_perfect, signal_real, perfect_rir_sample, generated_sample, real_rir_sample
                     torch.cuda.empty_cache()
                     
                 
-                step = state["step"]
-                # Gather loss from all processes, log value only on process with rank 0
-                if fabric.is_global_zero and (i + 1) % 1000 == 0:
-                    fabric.log("evaluation loss", loss.item(), step)
+                
+            # Gather loss from all processes, log value only on process with rank 0
+            if fabric.is_global_zero and (i + 1) % 1000 == 0:
+                for j in range(int(rir_chunks_count)):
+                    all_losses[i] = np.asarray(all_losses[j])
+                    all_losses[i] = np.mean(all_losses[j])
+                    fabric.log(f"evaluation loss{j}", all_losses[j].item(), step)
                     logging.info(
                         "Évaluation loss, étape %d sur %d", i + 1, len(eval_loader)
                     )
                     
 
-            all_losses = np.asarray(all_losses)
-            loss_filepath = os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz")
-            with open(loss_filepath, "wb") as f:
-                np.savez_compressed(
-                    f, all_losses=all_losses, mean_loss=all_losses.mean()
-                )
+            # all_losses = np.asarray(all_losses)
+            # loss_filepath = os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz")
+            # with open(loss_filepath, "wb") as f:
+            #     np.savez_compressed(
+            #         f, all_losses=all_losses, mean_loss=all_losses.mean()
+            #     )
             
 
             
