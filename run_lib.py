@@ -629,6 +629,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
     # Initialisation du modèle, de l'optimizer et de l'EMA.
     score_model = mutils.create_model(config)
     optimizer = losses.get_optimizer(config, score_model.parameters())
+    score_model, optimizer = fabric.setup(score_model, optimizer)
     ema = ExponentialMovingAverage(
         score_model.parameters(), decay=config.model.ema_rate
     )
@@ -821,15 +822,12 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                 
                 
             # Gather loss from all processes, log value only on process with rank 0
-            if fabric.is_global_zero and (i + 1) % 1000 == 0:
+            if fabric.is_global_zero :
                 for j in range(int(rir_chunks_count)):
-                    all_losses[i] = np.asarray(all_losses[j])
-                    all_losses[i] = np.mean(all_losses[j])
+                    all_losses[j] = np.asarray(all_losses[j])
+                    all_losses[j] = np.mean(all_losses[j])
                     fabric.log(f"evaluation loss{j}", all_losses[j].item(), step)
-                    logging.info(
-                        "Évaluation loss, étape %d sur %d", i + 1, len(eval_loader)
-                    )
-                    
+                    logging.info("étape: %d, loss évaluation: %.5e", step, all_losses[j].item())
 
             # all_losses = np.asarray(all_losses)
             # loss_filepath = os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz")

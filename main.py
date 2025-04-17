@@ -137,7 +137,7 @@ def main():
     if args.mode == "train":
         run_lib.train(config, workdir, fabric)
     elif args.mode == "eval":
-        run_lib.evaluate(config, args.workdir, args.eval_folder)
+        run_lib.evaluate(config, args.workdir, args.eval_folder, fabric)
     else:
         raise ValueError(f"Mode {args.mode} non reconnu.")
 
