@@ -66,12 +66,13 @@ class MultiRIRDataset(Dataset):
         self.beginning = config.data.begining
         
         total = config.data.num_room * config.data.pos_per_room
-        train_max_index = int(total * 0.8)
+        train_max_index = int(total * 0.99)
         
         if mode == "train":
             self.indices = np.arange(stop=train_max_index)
         else:
-            self.indices = np.arange(start=train_max_index, stop=total) * self.rir_chunks_count
+            self.indices = np.arange(start=train_max_index * self.rir_chunks_count, stop=total * self.rir_chunks_count) 
+
         
     def __len__(self):
         return len(self.indices)
@@ -81,8 +82,8 @@ class MultiRIRDataset(Dataset):
             room_index = self.indices[idx]
             chunk_index = 0
         else:
-            room_index = self.indices[idx // self.rir_chunks_count]
-            chunk_index = room_index % self.rir_chunks_count
+            room_index = self.indices[idx] // self.rir_chunks_count
+            chunk_index = self.indices[idx] % self.rir_chunks_count
         
         # Get room number and position number from room index using euclidean division
         room_number = int(room_index / self.config.data.pos_per_room)

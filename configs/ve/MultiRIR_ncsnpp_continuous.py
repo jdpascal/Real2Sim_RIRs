@@ -56,11 +56,12 @@ def get_config() -> ml_collections.ConfigDict:
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 50
-    evaluate.end_ckpt = 96
-    evaluate.batch_size = 4
+    evaluate.begin_ckpt = 1
+    evaluate.end_ckpt = 25
+    # for now only support batch size of 1
+    evaluate.batch_size = 1
     evaluate.enable_sampling = True
-    evaluate.num_samples = 50000
+    evaluate.num_samples = 500
     evaluate.enable_loss = True
     evaluate.enable_bpd = False
     evaluate.bpd_dataset = "test"
@@ -72,7 +73,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.centered = False
     data.dataset = "MultiRIR"
     data.rir_samples_count = 256
-    data.total_rir_samples_count = 256 # should be a multiple of rir_samples_count
+    data.total_rir_samples_count = 1024 # should be a multiple of rir_samples_count
     data.begining = 0
     data.first_stride_convolution = 1 # best results with 1, because it keeps the best resolution
     data.image_size = data.rir_samples_count / data.first_stride_convolution 

@@ -438,7 +438,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
         x = sde.prior_sampling(shape, y)
       else:
         x = sde.prior_sampling(shape)
-      timesteps = torch.linspace(sde.T, eps, sde.N)
+      timesteps = torch.linspace(sde.T, eps, sde.N, device=x.device)
       stepsize = timesteps[-1] - timesteps[-2]
 
       samples = []

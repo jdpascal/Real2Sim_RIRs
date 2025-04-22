@@ -116,6 +116,14 @@ def get_sde_loss_fn(
             losses = torch.square(score + z / std[:, None, None, None])
             losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
 
+        if train:
+            # IDEA: Add noise to the loss for training
+            # noise = torch.randn_like(losses)
+            # losses = losses + eps * noise
+            loss = torch.mean(losses)
+        else:
+            return losses
+
         loss = torch.mean(losses)
         return loss
 
