@@ -450,7 +450,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
         x, x_mean = corrector_update_fn(x, vec_t, model=model)
         x, x_mean = predictor_update_fn(x, vec_t, model=model,step=stepsize)
 
-        if i % 50 == 0:
+        if (i + 1) % 50 == 0:
           samples.append(inverse_scaler(x_mean if denoise else x)[0])
 
       return samples, sde.N * (n_steps + 1)
