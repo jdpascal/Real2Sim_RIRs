@@ -66,7 +66,7 @@ class MultiRIRDataset(Dataset):
         self.beginning = config.data.begining
         
         total = config.data.num_room * config.data.pos_per_room
-        train_max_index = int(total * 0.999)
+        train_max_index = int(total * 0.9999)
         
         if mode == "train":
             self.indices = np.arange(stop=train_max_index)

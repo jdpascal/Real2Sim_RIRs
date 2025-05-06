@@ -30,9 +30,9 @@ def get_config() -> ml_collections.ConfigDict:
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 2
-    training.n_iters = 60000
-    training.snapshot_freq = 2000
+    training.batch_size = 4
+    training.n_iters = 50001
+    training.snapshot_freq = 5000
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
@@ -56,15 +56,17 @@ def get_config() -> ml_collections.ConfigDict:
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 1
+    evaluate.begin_ckpt = 25
     evaluate.end_ckpt = 25
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
-    evaluate.num_samples = 500
+    evaluate.num_samples = 200
+    # evaluate.num_samples = 500
     evaluate.enable_loss = True
     evaluate.enable_bpd = False
     evaluate.bpd_dataset = "test"
+    evaluate.distance_peaks = True
 
     # data
     config.data = data = ml_collections.ConfigDict()
@@ -73,7 +75,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.centered = False
     data.dataset = "MultiRIR"
     data.rir_samples_count = 256
-    data.total_rir_samples_count = 1024 # should be a multiple of rir_samples_count
+    data.total_rir_samples_count = 256 # should be a multiple of rir_samples_count
     data.begining = 0
     data.first_stride_convolution = 1 # best results with 1, because it keeps the best resolution
     data.image_size = data.rir_samples_count / data.first_stride_convolution 
@@ -83,24 +85,29 @@ def get_config() -> ml_collections.ConfigDict:
     data.npz_path = "./dataset_source_back/"
     data.num_room = 15000
     data.pos_per_room = 10
+    data.sample_rate = 16000
 
     # model
     config.model = model = ml_collections.ConfigDict()
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
+    # model.sigma_max = 0.5
+    # model.sigma_min = 0.05
     model.sigma_max = 1.0
     model.sigma_min = 0.1
-    model.num_scales = 200
+    model.num_scales = 200  #2
     model.scale_by_sigma = True
     model.ema_rate = 0.999
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"  # "lrelu"
     model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
-    model.ch_mult = (2,2,4,4,4,4) #, 2, 2, 2
+    model.ch_mult = (2,2,4,4,4,4) # 2, 2, 4, 4, 4, 4)
+    # model.ch_mult = (1,1,1,2,2,2,2) # 2, 2, 4, 4, 4, 4)
     model.num_res_blocks = 3
-    # model.attn_resolutions = (16,)
+    # model.num_res_blocks = 2 
     model.attn_resolutions = (32,8)
+    # model.attn_resolutions = (8,)
     model.resamp_with_conv = True
     model.conditional = True
     model.fir = True

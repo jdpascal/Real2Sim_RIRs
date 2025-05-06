@@ -403,13 +403,12 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
     # if config.eval.enable_bpd:
     #     likelihood_fn = likelihood.get_likelihood_fn(sde, inverse_scaler)
 
-    if config.eval.enable_sampling:
-        sampling_shape = (
-            config.eval.batch_size,
-            config.data.num_channels,
-            config.data.rir_samples_count,
-            config.data.channels,
-        )
+    sampling_shape = (
+        config.eval.batch_size,
+        config.data.num_channels,
+        config.data.rir_samples_count,
+        config.data.channels,
+    )
 
     begin_ckpt = config.eval.begin_ckpt
     logging.info("Début de l'évaluation à partir du checkpoint %d.", begin_ckpt)
@@ -452,6 +451,11 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
         if config.eval.enable_loss:
             step = state["step"]
             all_losses = {}
+            # Avant la boucle d'évaluation : on crée deux listes globales
+            k = 2
+            all_distances_gen = []
+            all_distances_real = []
+
             for i in range(int(rir_chunks_count)):
                 all_losses[i] = []
             for i, batch in enumerate(eval_loader):
@@ -477,6 +481,60 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     all_losses[chunk_index[chunk]].append(loss_eval[chunk])
                 # all_losses[chunk_index].append(loss_eval.item())
 
+            
+                if config.eval.distance_peaks :
+                    sampling_fn = sampling.get_sampling_fn(
+                        config,
+                        sde,
+                        sampling_shape,
+                        inverse_scaler,
+                        sampling_eps,
+                        y=real_rir.detach(),
+                        )
+                    samples, n = sampling_fn(score_model)
+                    perfect_rir_sample = (
+                            perfect_rir[0].detach().cpu().numpy()
+                        )  # forme: (epaisseur=1, longueur, canaux)
+                                        # Suppression de la dimension "épaisseur" (qui vaut 1)
+                    perf = np.squeeze(
+                            perfect_rir_sample, axis=0
+                        )  # devient (longueur, canaux)
+                    real_rir_sample = (
+                            real_rir[0].detach().cpu().numpy()
+                        )
+                        # Suppression de la dimension "épaisseur" (qui vaut 1)
+                    real = np.squeeze(
+                            real_rir_sample, axis=0
+                        )  # devient (longueur, canaux)
+                    generated_sample = (
+                            samples[-1].detach().cpu().numpy()
+                        )  # forme: (epaisseur=1, longueur, canaux)
+                    del samples
+                    gen = np.squeeze(
+                            generated_sample, axis=0
+                        )  # devient (longueur, canaux)
+                    
+                    distances_gen = []
+                    distances_real = []
+                    for c in range(config.data.channels):
+                        idx_perf = np.argsort(perf[:, c])[-k:]
+                        idx_gen  = np.argsort(gen[:,  c])[-k:]
+                        idx_real = np.argsort(real[:, c])[-k:]
+                        idx_perf = np.sort(idx_perf)
+                        idx_gen  = np.sort(idx_gen)
+                        idx_real = np.sort(idx_real)
+
+                        print(f"idx_perf: {idx_perf-idx_gen}")
+                        distances_gen.extend(np.abs(idx_perf - idx_gen))
+                        distances_real.extend(np.abs(idx_perf - idx_real))
+
+                        all_distances_gen.append(distances_gen)
+                        all_distances_real.append(distances_real)
+                        logging.info(f"distances_gen: {distances_gen}")
+                        logging.info(f"distances_real: {distances_real}")
+
+                    del gen, perf, real
+
                 if (i + 1) * config.eval.batch_size <= rir_chunks_count :
                     if i == 0:
                         big_rir_generated = np.zeros(
@@ -501,6 +559,21 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
                     os.makedirs(this_sample_dir, exist_ok=True)
                     samples, n = sampling_fn(score_model)
+
+                    if config.eval.enable_sampling:
+                        for index, sample in enumerate(samples):
+                            # Sauvegarde des échantillons générés.
+                            sample_filepath = os.path.join(
+                                this_sample_dir, f"sample_{index}.npz"
+                            )
+                            with open(sample_filepath, "wb") as f:
+                                np.savez_compressed(
+                                    f,
+                                    generated_rir=sample.detach().cpu().numpy(),
+                                    perfect_rir=perfect_rir.detach().cpu().numpy(),
+                                    real_rir=real_rir.detach().cpu().numpy(),
+                                )
+
                     # Sélection du premier exemple du batch pour la comparaison
                     perfect_rir_sample = (
                             perfect_rir[0].detach().cpu().numpy()
@@ -574,6 +647,31 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
             #     np.savez_compressed(
             #         f, all_losses=all_losses, mean_loss=all_losses.mean()
             #     )
+
+            all_distances_gen = np.array(all_distances_gen) 
+            all_distances_real = np.array(all_distances_real)
+
+            # 5) Calcul des scores globaux
+            mean_gen = all_distances_gen.mean()
+            var_gen  = all_distances_gen.var()
+            mean_real = all_distances_real.mean()
+            var_real  = all_distances_real.var()
+
+            logging.info("mean_gen: %f, var_gen: %f", mean_gen, var_gen)
+            logging.info("mean_real: %f, var_real: %f", mean_real, var_real)
+            # 6) Sauvegarde des distances
+            distances_filepath = os.path.join(eval_dir, f"distances.npz")
+            with open(distances_filepath, "wb") as f:
+                np.savez_compressed(
+                    f,
+                    all_distances_gen=all_distances_gen,
+                    all_distances_real=all_distances_real,
+                    mean_gen=mean_gen,
+                    var_gen=var_gen,
+                    mean_real=mean_real,
+                    var_real=var_real,
+                    step=step,
+                )
             
 
             
