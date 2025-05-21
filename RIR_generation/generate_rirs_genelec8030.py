@@ -12,6 +12,7 @@ from alive_progress import alive_bar
 from pyroomacoustics.datasets import SOFADatabase
 from pyroomacoustics.directivities import (
     MeasuredDirectivityFile,
+    MeasuredDirectivity,
     Rotation3D,
 )
 
@@ -25,7 +26,7 @@ dist_mur = 1
 max_order_ism = 10
 delay = 83
 limit = 1024
-crop_start = 50
+crop_start = 70
 
 # Coefficient of absorption more real, per octave band, per walls
 abs_coeffs_lower_bound = np.array(
@@ -56,6 +57,7 @@ center_freqs = [125, 250, 500, 1000, 2000, 4000, 8000]
 def calculate_rirs_for_config(
     eigenmike: MeasuredDirectivityFile,
     src_dir: MeasuredDirectivityFile,
+    genelec8030: MeasuredDirectivity,
     room_dim: list[float],
     pos_src: np.ndarray,
     pos_mics: np.ndarray,
@@ -71,7 +73,6 @@ def calculate_rirs_for_config(
     orientation = Rotation3D([theta , phi], "zy", degrees=True)
     theta_mic, phi_mic = fun.random_angles()
     orientation_mic = Rotation3D([theta_mic, phi_mic], "zy", degrees=True)
-    # dir = DirectionVector(theta, phi)
 
     # Pick random coefficient for absorption but realistic
     P = np.random.uniform(abs_coeffs_lower_bound, abs_coeffs_upper_bound)
@@ -127,10 +128,8 @@ def calculate_rirs_for_config(
     )
 
     # Add source and microphone
-    genelec8020 = src_dir.get_source_directivity(
-        "Tannoy_System_1200", orientation=orientation
-    )
-    room_real.add_source(pos_src, directivity=genelec8020)
+    genelec8030.set_orientation(orientation)
+    room_real.add_source(pos_src, directivity=genelec8030)
     # Get the directivity objects from the files and add mics
     list_dir = []
     for j in range(32):
@@ -254,14 +253,15 @@ def main():
 
     # Reads the file containing Genelec 8020 's directivity measurements
     src_dir = MeasuredDirectivityFile(
-        "LSPs_HATS_GuitarCabinets_Akustikmessplatz", fs=16000
+        "LS_directivity_Calibrated_GENELEC_8030B", fs=16000
     )
+    genelec8030 = src_dir.get_source_directivity(0, orientation=Rotation3D([0, 0], "zy", degrees=True))
 
     path = db["EM32_Directivity"].path
     files = sf.open_sofa_file(path)
     pos_eigenmike = files[3]
 
-    workdir = "./dataset_source_Tannoy/"
+    workdir = "./dataset_genelec_8030/"
     os.makedirs(workdir, exist_ok=True)
 
     # --- Configuration du logger pour écrire dans un fichier ---
@@ -298,6 +298,7 @@ def main():
                 (
                     eigenmike,
                     src_dir,
+                    genelec8030,
                     room_dim,
                     pos_src,
                     pos_mics,

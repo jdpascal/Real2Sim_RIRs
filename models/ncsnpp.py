@@ -349,11 +349,13 @@ class NCSNpp(nn.Module):
             x = 2 * x - 1.0
 
         # x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
+        # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
         x = x.permute(0, 3, 2, 1)
         x = modules[m_idx](x)
         m_idx += 1
         # x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
         x = x.permute(0, 3, 2, 1)
+        # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
 
         # Downsampling block
         
@@ -370,6 +372,7 @@ class NCSNpp(nn.Module):
             for i_block in range(self.num_res_blocks):
                 # print("residual_block input", hs[-1].shape)
                 logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+                torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
                 h = modules[m_idx](hs[-1], temb)
                 m_idx += 1
                 # print("residual_block output", h.shape)
@@ -441,6 +444,7 @@ class NCSNpp(nn.Module):
         
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks + 1):
+                # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
                 h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb)
                 m_idx += 1
 

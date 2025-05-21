@@ -2,11 +2,11 @@
 
 #SBATCH -p publicgpu
 #SBATCH --nodes=1               # This needs to match --ddp-nodes
-#SBATCH --ntasks-per-node=4     # This needs to match --ddp-devices-per-node
-#SBATCH --gres=gpu:4            # Request N GPUs per machine
+#SBATCH --ntasks-per-node=2     # This needs to match --ddp-devices-per-node
+#SBATCH --gres=gpu:2            # Request N GPUs per machine
 #SBATCH --constraint=gputc
 #SBATCH --mem=0
-#SBATCH --time=0-10:00:00
+#SBATCH --time=0-20:00:00
 
 # Load correct python and cuda modules
 module load python/3.12.8
@@ -22,6 +22,9 @@ source venv/bin/activate
 # On your cluster you might need this:
 export NCCL_SOCKET_IFNAME=^docker0,lo
 
+# export CUDA_VISIBLE_DEVICES=1
+# export TORCH_USE_CUDA_DSA
+
 # Run main with training arguments
 srun python main.py \
     --config configs/ve/MultiRIR_ncsnpp_continuous.py \
@@ -29,4 +32,4 @@ srun python main.py \
     --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \
     --ddp-nodes 1\
-    --ddp-devices-per-node 4
+    --ddp-devices-per-node 2

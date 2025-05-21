@@ -4,6 +4,7 @@ import abc
 import torch
 import numpy as np
 import warnings
+import logging
 
 
 class SDE(abc.ABC):
@@ -254,10 +255,10 @@ class SBVESDE(SDE):
         parser.add_argument("--k", type=float, default=2.6, help="Parameter of the diffusion coefficient. 2.6 by default.")
         parser.add_argument("--c", type=float, default=0.4, help="Parameter of the diffusion coefficient. 0.4 by default.")
         parser.add_argument("--eps", type=float, default=1e-8, help="Small constant to avoid numerical instability. 1e-8 by default.")
-        parser.add_argument("--sampler_type", type=str, default="ode")
+        parser.add_argument("--sampler_type", type=str, default="sde")
         return parser
 
-    def __init__(self, k, c, N=50, eps=1e-8, sampler_type="ode", **ignored_kwargs):
+    def __init__(self, k, c, N=50, eps=1e-8, sampler_type="sde", **ignored_kwargs):
         """Construct a Schrodinger Bridge with Variance Exploding SDE.
 
         As described in Jukić et al., „Schrödinger Bridge for Generative Speech Enhancement“, 2024.

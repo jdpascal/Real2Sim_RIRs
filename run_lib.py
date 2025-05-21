@@ -56,6 +56,9 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         config: Objet de configuration.
         workdir: Répertoire de travail pour sauvegardes et logs TensorBoard.
     """
+
+    # torch.cuda.memory._record_memory_history()
+
     # Initialisation du modèle.
     score_model = mutils.create_model(config)
     ema = ExponentialMovingAverage(
@@ -124,6 +127,13 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             N=config.model.num_scales,
         )
         sampling_eps = 1e-5
+    elif sde_name == "sbvesde":
+        sde = sde_lib.SBVESDE(
+            k=config.model.k,
+            c=config.model.c,
+            N=config.model.num_scales
+        )
+        sampling_eps = 1e-5
     else:
         raise NotImplementedError(f"SDE {config.training.sde} inconnu.")
 
@@ -131,7 +141,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     optimize_fn = losses.optimization_manager(config)
     continuous = config.training.continuous
     reduce_mean = config.training.reduce_mean
-    likelihood_weighting = config.training.likelihood_weighting
+    loss_type = config.training.loss_type
     train_step_fn = losses.get_step_fn(
         sde,
         fabric,
@@ -139,7 +149,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         optimize_fn=optimize_fn,
         reduce_mean=reduce_mean,
         continuous=continuous,
-        likelihood_weighting=likelihood_weighting,
+        loss_type=loss_type,
     )
     eval_step_fn = losses.get_step_fn(
         sde,
@@ -148,7 +158,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         optimize_fn=optimize_fn,
         reduce_mean=reduce_mean,
         continuous=continuous,
-        likelihood_weighting=likelihood_weighting,
+        loss_type=loss_type,
     )
 
     num_train_steps = config.training.n_iters
@@ -192,6 +202,9 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             # Appliquer la normalisation (si nécessaire).
             current_batch = scaler(img)
 
+        # logging.info(f"memory summary before training: {torch.cuda.memory_summary()}")
+
+        # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
         # Exécuter une étape d'entraînement
         loss = train_step_fn(state, current_batch)
         # del current_batch
@@ -388,7 +401,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
     if config.eval.enable_loss:
         optimize_fn = losses.optimization_manager(config)
         continuous = config.training.continuous
-        likelihood_weighting = config.training.likelihood_weighting
+        loss_type = config.training.loss_type
         reduce_mean = config.training.reduce_mean
         eval_step = losses.get_step_fn(
             sde,
@@ -397,7 +410,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
             optimize_fn=optimize_fn,
             reduce_mean=reduce_mean,
             continuous=continuous,
-            likelihood_weighting=likelihood_weighting,
+            loss_type=loss_type,
         )
 
     # if config.eval.enable_bpd:
@@ -648,30 +661,33 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
             #         f, all_losses=all_losses, mean_loss=all_losses.mean()
             #     )
 
-            all_distances_gen = np.array(all_distances_gen) 
-            all_distances_real = np.array(all_distances_real)
 
-            # 5) Calcul des scores globaux
-            mean_gen = all_distances_gen.mean()
-            var_gen  = all_distances_gen.var()
-            mean_real = all_distances_real.mean()
-            var_real  = all_distances_real.var()
+            # 4) Sauvegarde des distances
+            if config.eval.distance_peaks:
+                all_distances_gen = np.array(all_distances_gen) 
+                all_distances_real = np.array(all_distances_real)
 
-            logging.info("mean_gen: %f, var_gen: %f", mean_gen, var_gen)
-            logging.info("mean_real: %f, var_real: %f", mean_real, var_real)
-            # 6) Sauvegarde des distances
-            distances_filepath = os.path.join(eval_dir, f"distances.npz")
-            with open(distances_filepath, "wb") as f:
-                np.savez_compressed(
-                    f,
-                    all_distances_gen=all_distances_gen,
-                    all_distances_real=all_distances_real,
-                    mean_gen=mean_gen,
-                    var_gen=var_gen,
-                    mean_real=mean_real,
-                    var_real=var_real,
-                    step=step,
-                )
-            
+                # 5) Calcul des scores globaux
+                mean_gen = all_distances_gen.mean()
+                var_gen  = all_distances_gen.var()
+                mean_real = all_distances_real.mean()
+                var_real  = all_distances_real.var()
+
+                logging.info("mean_gen: %f, var_gen: %f", mean_gen, var_gen)
+                logging.info("mean_real: %f, var_real: %f", mean_real, var_real)
+                # 6) Sauvegarde des distances
+                distances_filepath = os.path.join(eval_dir, f"distances.npz")
+                with open(distances_filepath, "wb") as f:
+                    np.savez_compressed(
+                        f,
+                        all_distances_gen=all_distances_gen,
+                        all_distances_real=all_distances_real,
+                        mean_gen=mean_gen,
+                        var_gen=var_gen,
+                        mean_real=mean_real,
+                        var_real=var_real,
+                        step=step,
+                    )
+                
 
             

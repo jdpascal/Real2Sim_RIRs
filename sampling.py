@@ -175,22 +175,11 @@ class Corrector(abc.ABC):
 
 
 @register_predictor(name='euler_maruyama')
-# class EulerMaruyamaPredictor(Predictor):
-#   def __init__(self, sde, score_fn, probability_flow=False):
-#     super().__init__(sde, score_fn, probability_flow)
-
-#   def update_fn(self, x, t):
-#     dt = -1. / self.rsde.N
-#     z = torch.randn_like(x)
-#     drift, diffusion = self.rsde.sde(x, t)
-#     x_mean = x + drift * dt
-#     x = x_mean + diffusion[:, None, None, None] * np.sqrt(-dt) * z
-#     return x, x_mean
 class EulerMaruyamaPredictor(Predictor):
     def __init__(self, sde, score_fn, probability_flow=False):
         super().__init__(sde, score_fn, probability_flow=probability_flow)
 
-    def update_fn(self, x, y, t, *args):
+    def update_fn(self, x, t, y, stepsize=None, *args):
         dt = -1. / self.rsde.N
         z = torch.randn_like(x)
         f, g = self.rsde.sde(x, y, t, *args)
@@ -198,18 +187,6 @@ class EulerMaruyamaPredictor(Predictor):
         x = x_mean + g[:, None, None, None] * np.sqrt(-dt) * z
         return x, x_mean
 
-
-# @register_predictor(name='reverse_diffusion')
-# class ReverseDiffusionPredictor(Predictor):
-#   def __init__(self, sde, score_fn, probability_flow=False):
-#     super().__init__(sde, score_fn, probability_flow)
-
-#   def update_fn(self, x, t):
-#     f, G = self.rsde.discretize(x, t)
-#     z = torch.randn_like(x)
-#     x_mean = x - f
-#     x = x_mean + G[:, None, None, None] * z
-#     return x, x_mean
 @register_predictor(name='reverse_diffusion')
 class ReverseDiffusionPredictor(Predictor):
   def __init__(self, sde, score_fn, probability_flow=False):
@@ -329,11 +306,6 @@ class AnnealedLangevinDynamics(Corrector):
     score_fn = self.score_fn
     n_steps = self.n_steps
     target_snr = self.snr
-    # if isinstance(sde, sde_lib.VPSDE) or isinstance(sde, sde_lib.subVPSDE):
-    #   timestep = (t * (sde.N - 1) / sde.T).long()
-    #   # alpha = sde.alphas.to(t.device)[timestep]
-    # else:
-    #   alpha = torch.ones_like(t)
 
     if y is not None:
       batch = x, y
@@ -409,51 +381,114 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
   Returns:
     A sampling function that returns samples and the number of function evaluations during sampling.
   """
-  # Create predictor & corrector update functions
-  predictor_update_fn = functools.partial(shared_predictor_update_fn,
-                                          sde=sde,
-                                          y=y,
-                                          predictor=predictor,
-                                          probability_flow=probability_flow,
-                                          continuous=continuous)
-  corrector_update_fn = functools.partial(shared_corrector_update_fn,
-                                          sde=sde,
-                                          y=y,
-                                          corrector=corrector,
-                                          continuous=continuous,
-                                          snr=snr,
-                                          n_steps=n_steps)
+  if isinstance(sde, sde_lib.OUVESDE) :
+    # Create predictor & corrector update functions
+    predictor_update_fn = functools.partial(shared_predictor_update_fn,
+                                            sde=sde,
+                                            y=y,
+                                            predictor=predictor,
+                                            probability_flow=probability_flow,
+                                            continuous=continuous)
+    corrector_update_fn = functools.partial(shared_corrector_update_fn,
+                                            sde=sde,
+                                            y=y,
+                                            corrector=corrector,
+                                            continuous=continuous,
+                                            snr=snr,
+                                            n_steps=n_steps)
 
-  def pc_sampler(model):
-    """ The PC sampler funciton.
+    def pc_sampler(model):
+      """ The PC sampler funciton.
 
-    Args:
-      model: A score model.
-    Returns:
-      Samples, number of function evaluations.
-    """
-    with torch.no_grad():
-      if y is not None:
-      # Initial sample
-        x = sde.prior_sampling(shape, y)
-      else:
-        x = sde.prior_sampling(shape)
-      timesteps = torch.linspace(sde.T, eps, sde.N, device=x.device)
-      stepsize = timesteps[-1] - timesteps[-2]
+      Args:
+        model: A score model.
+      Returns:
+        Samples, number of function evaluations.
+      """
+      with torch.no_grad():
+        if y is not None:
+        # Initial sample
+          x = sde.prior_sampling(shape, y)
+        else:
+          x = sde.prior_sampling(shape)
+        timesteps = torch.linspace(sde.T, eps, sde.N, device=x.device)
+        stepsize = timesteps[-2] - timesteps[-1]
 
-      samples = []
+        samples = []
 
-      for i in range(sde.N):
-        logging.debug(f"Sampling {i+1} / {sde.N}")
-        t = timesteps[i]
-        vec_t = torch.ones(shape[0], device=t.device) * t
-        x, x_mean = corrector_update_fn(x, vec_t, model=model)
-        x, x_mean = predictor_update_fn(x, vec_t, model=model,step=stepsize)
+        for i in range(sde.N):
+          logging.debug(f"Sampling {i+1} / {sde.N}")
+          t = timesteps[i]
+          vec_t = torch.ones(shape[0], device=t.device) * t
+          x, x_mean = corrector_update_fn(x, vec_t, model=model)
+          x, x_mean = predictor_update_fn(x, vec_t, model=model,step=stepsize)
 
-        if (i + 1) % 10 == 0:
-          samples.append(inverse_scaler(x_mean if denoise else x)[0])
+          if (i + 1) % 10 == 0:
+            samples.append(inverse_scaler(x_mean if denoise else x)[0])
 
-      return samples, sde.N * (n_steps + 1)
+        return samples, sde.N * (n_steps + 1)
+      
+  elif isinstance(sde, sde_lib.SBVESDE) :
+    def pc_sampler(model):
+      """
+      The SB-SDE sampler function
+      """
+      with torch.no_grad():
+          xt = y # [:, [0], :, :] # special case for storm_2ch
+          time_steps = torch.linspace(sde.T, eps, sde.N + 1, device=y.device)
+
+          # Initial values
+          time_prev = time_steps[0] * torch.ones(xt.shape[0], device=xt.device)
+          sigma_prev, sigma_T, sigma_bar_prev, alpha_prev, alpha_T, alpha_bar_prev = sde._sigmas_alphas(time_prev)
+
+          samples = []
+
+          for t in time_steps[1:]:
+            # Prepare time steps for the whole batch
+            time = t * torch.ones(xt.shape[0], device=xt.device)
+
+            # Get noise schedule for current time
+            sigma_t, sigma_T, sigma_bart, alpha_t, alpha_T, alpha_bart = sde._sigmas_alphas(time)
+
+            # Run DNN
+            score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
+            current_estimate = score_fn(xt, time, y)
+
+            # Calculate scaling for the first-order discretization from the paper
+            weight_prev = alpha_t * sigma_t**2 / (alpha_prev * sigma_prev**2 + sde.eps)
+            tmp = 1 - sigma_t**2 / (sigma_prev**2 + sde.eps)
+            weight_estimate = alpha_t * tmp
+            weight_z = alpha_t * sigma_t * torch.sqrt(tmp)
+
+            # View as [B, C, D, T]
+            weight_prev = weight_prev[:, None, None, None]
+            weight_estimate = weight_estimate[:, None, None, None]
+            weight_z = weight_z[:, None, None, None]
+
+            # Random sample
+            z_norm = torch.randn_like(xt)
+            
+            if t == time_steps[-1]:
+                weight_z = 0.0
+
+            # Update state: weighted sum of previous state, current estimate and noise
+            x = xt
+            xt = weight_prev * xt + weight_estimate * current_estimate + weight_z * z_norm
+
+            # Save previous values
+            time_prev = time
+            alpha_prev = alpha_t
+            sigma_prev = sigma_t
+            sigma_bar_prev = sigma_bart
+
+            if (t + 1) % 10 == 0:
+              samples.append(inverse_scaler(xt if denoise else x)[0])
+
+          # return samples, sde.N * (n_steps + 1)
+          samples.append(inverse_scaler(xt if denoise else x)[0])
+
+          return xt, n_steps
+  
 
   return pc_sampler
 

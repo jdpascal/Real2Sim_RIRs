@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from lightning import Fabric
+import logging
 
 from models import utils as mutils
 from sde_lib import SDE, VESDE, VPSDE
@@ -67,7 +68,7 @@ def optimization_manager(config):
 
 
 def get_sde_loss_fn(
-    sde, train, reduce_mean=True, continuous=True, likelihood_weighting=True, eps=1e-5
+    sde, train, reduce_mean=True, continuous=True, loss_type="score_matching", eps=1e-5
 ):
     """Create a loss function for training with arbirary SDEs.
 
@@ -77,18 +78,19 @@ def get_sde_loss_fn(
       reduce_mean: If `True`, average the loss across data dimensions. Otherwise sum the loss across data dimensions.
       continuous: `True` indicates that the model is defined to take continuous time steps. Otherwise it requires
         ad-hoc interpolation to take continuous time steps.
-      likelihood_weighting: If `True`, weight the mixture of score matching losses
-        according to https://arxiv.org/abs/2101.09258; otherwise use the weighting recommended in our paper.
-      eps: A `float` number. The smallest time step to sample from.
+      loss_type: string, the type of loss function to use. Options are:
+        - "score_matching": Use the score matching loss.
+        - "denoiser": Use the denoising loss.
+        - "data_prediction": Use the data prediction loss. DDPM type, recommended for Schrodinger bridges
 
     Returns:
       A loss function.
     """
-    reduce_op = (
-        torch.mean
-        if reduce_mean
-        else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
-    )
+    # reduce_op = (
+    #     torch.mean
+    #     if reduce_mean
+    #     else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
+    # )
 
     def loss_fn(model, batch):
         """Compute the loss function.
@@ -108,13 +110,34 @@ def get_sde_loss_fn(
         perturbed_data = mean + std[:, None, None, None] * z 
 
         score = score_fn(perturbed_data, t, y)
-        if not likelihood_weighting:
-            losses = torch.square(score * std[:, None, None, None] + z) #+ torch.abs(score * std[:, None, None, None] + z)
-            losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
+        # if not likelihood_weighting:
+        #     losses = torch.square( score * std[:, None, None, None] + z) #+ torch.abs(score * std[:, None, None, None] + z)
+        #     losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
+        # else:
+        #     g2 = sde.sde(torch.zeros_like(x), t)[1] ** 2
+        #     losses = torch.square( score + z / std[:, None, None, None])
+        #     losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
+                
+        if loss_type == "score_matching":
+            losses = torch.square(torch.abs(score * std[:, None, None, None] + z)) # Eq. (7)
+
+            # Sum over spatial dimensions and channels and mean over batch
+            losses =  0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
+        elif loss_type == "denoiser":
+            D = score * std[:, None, None, None].pow(2) + perturbed_data # equivalent to Eq. (10)
+            losses = torch.square(torch.abs(D - mean)) # Eq. (8)
+            # Sum over spatial dimensions and channels and mean over batch
+            losses = 0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
+        elif loss_type == "data_prediction":
+            logging.info("Using data prediction loss")
+            B, C, T, Ch = x.shape
+
+            # losses 
+            losses = (1 / ( Ch * T )) * torch.square(torch.abs(score - x))
+            losses = 0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
         else:
-            g2 = sde.sde(torch.zeros_like(x), t)[1] ** 2
-            losses = torch.square(score + z / std[:, None, None, None])
-            losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
+            raise ValueError(f"Unknown loss type: {loss_type}")
+
 
         if train:
             # IDEA: Add noise to the loss for training
@@ -194,7 +217,7 @@ def get_step_fn(
     optimize_fn=None,
     reduce_mean=False,
     continuous=True,
-    likelihood_weighting=False,
+    loss_type="score_matching",
 ):
     """Create a one-step training/evaluation function.
 
@@ -203,8 +226,10 @@ def get_step_fn(
       optimize_fn: An optimization function.
       reduce_mean: If `True`, average the loss across data dimensions. Otherwise sum the loss across data dimensions.
       continuous: `True` indicates that the model is defined to take continuous time steps.
-      likelihood_weighting: If `True`, weight the mixture of score matching losses according to
-        https://arxiv.org/abs/2101.09258; otherwise use the weighting recommended by our paper.
+      loss_type: string, the type of loss function to use. Options are:
+        - "score_matching": Use the score matching loss.
+        - "denoiser": Use the denoising loss.
+        - "data_prediction": Use the data prediction loss. DDPM type, recommended for Schrodinger bridges
 
     Returns:
       A one-step function for training or evaluation.
@@ -215,10 +240,10 @@ def get_step_fn(
             train,
             reduce_mean=reduce_mean,
             continuous=True,
-            likelihood_weighting=likelihood_weighting,
+            loss_type=loss_type,
         )
     else:
-        assert not likelihood_weighting, (
+        assert not loss_type, (
             "Likelihood weighting is not supported for original SMLD/DDPM training."
         )
         if isinstance(sde, VESDE):

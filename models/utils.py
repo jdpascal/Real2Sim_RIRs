@@ -197,6 +197,20 @@ def get_score_fn(sde, model, train=False, continuous=False):
                 labels = torch.round(labels).long()
             score = model_fn(x, y, labels)
             return score
+        
+    elif isinstance(sde, sde_lib.SBVESDE):
+        def score_fn(x, t, y):
+            logging.debug("Score function starts.")
+            if continuous:
+                batch = (x, y)
+                labels = sde.marginal_prob(batch, t)[1]
+            else:
+                # For VE-trained models, t=0 corresponds to the highest noise level
+                labels = sde.T - t
+                labels *= sde.N - 1
+                labels = torch.round(labels).long()
+            score = model_fn(x, y, labels)
+            return score
 
     else:
         raise NotImplementedError(

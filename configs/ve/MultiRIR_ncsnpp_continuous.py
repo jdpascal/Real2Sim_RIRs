@@ -30,23 +30,23 @@ def get_config() -> ml_collections.ConfigDict:
     config = ml_collections.ConfigDict()
     # training
     config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 4
-    training.n_iters = 50001
+    training.batch_size = 2
+    training.n_iters = 75001
     training.snapshot_freq = 5000
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
-    training.snapshot_freq_for_preemption = 5000
+    training.snapshot_freq_for_preemption = 2000
     ## produce samples at each snapshot.
     training.snapshot_sampling = True
-    training.likelihood_weighting = False
+    training.loss_type = "data_prediction"
     training.continuous = True
     training.reduce_mean = False
-    training.sde = "ouvesde"
+    training.sde = "sbvesde"
 
     # sampling
     config.sampling = sampling = ml_collections.ConfigDict()
-    sampling.n_steps_each = 2
+    sampling.n_steps_each = 5
     sampling.noise_removal = True
     sampling.probability_flow = False
     sampling.snr = 0.33
@@ -66,7 +66,8 @@ def get_config() -> ml_collections.ConfigDict:
     evaluate.enable_loss = True
     evaluate.enable_bpd = False
     evaluate.bpd_dataset = "test"
-    evaluate.distance_peaks = True
+    # set distance_peaks to True to do the sampling on all the samples in the dataset test and calculate error of estimation peaks
+    evaluate.distance_peaks = False
 
     # data
     config.data = data = ml_collections.ConfigDict()
@@ -92,8 +93,10 @@ def get_config() -> ml_collections.ConfigDict:
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    # model.sigma_max = 0.5
-    # model.sigma_min = 0.05
+    model.k = 2.0
+    model.c = 0.5
+    # model.sigma_max = 0.7
+    # model.sigma_min = 0.07
     model.sigma_max = 1.0
     model.sigma_min = 0.1
     model.num_scales = 200  #2
@@ -102,12 +105,12 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"  # "lrelu"
     model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
-    model.ch_mult = (2,2,4,4,4,4) # 2, 2, 4, 4, 4, 4)
-    # model.ch_mult = (1,1,1,2,2,2,2) # 2, 2, 4, 4, 4, 4)
+    model.ch_mult = (2,2,4,4,4,4) # for 256 samples
+    # model.ch_mult = (1,1,1,2,2,2,2) # for 512 samples
     model.num_res_blocks = 3
-    # model.num_res_blocks = 2 
+    # model.num_res_blocks = 2 # for 512 samples
     model.attn_resolutions = (32,8)
-    # model.attn_resolutions = (8,)
+    # model.attn_resolutions = (8,) # for 512 samples
     model.resamp_with_conv = True
     model.conditional = True
     model.fir = True
@@ -128,7 +131,7 @@ def get_config() -> ml_collections.ConfigDict:
     config.optim = optim = ml_collections.ConfigDict()
     optim.weight_decay = 0
     optim.optimizer = "Adam"
-    optim.lr = 2e-5
+    optim.lr = 1e-5
     optim.beta1 = 0.9
     optim.eps = 1e-8
     optim.warmup = 5000
