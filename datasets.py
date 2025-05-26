@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms, datasets
 from pathlib import Path
+# import gzip
 
 # -------------------------
 # Fonctions de normalisation
@@ -66,7 +67,7 @@ class MultiRIRDataset(Dataset):
         self.beginning = config.data.begining
         
         total = config.data.num_room * config.data.pos_per_room
-        train_max_index = int(total * 0.9999)
+        train_max_index = int(total * 0.999)
         
         if mode == "train":
             self.indices = np.arange(stop=train_max_index)
@@ -90,6 +91,7 @@ class MultiRIRDataset(Dataset):
         pos_number = room_index % self.config.data.pos_per_room
         room_filename = f"room_{room_number}_{pos_number}.json"
 
+        # with gzip.open(Path(self.root_dir) / room_filename, 'r') as json_file:
         with open(Path(self.root_dir) / room_filename, 'r') as json_file:
             room_data = json.load(json_file)
             sample = {

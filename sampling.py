@@ -443,7 +443,8 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
 
           samples = []
 
-          for t in time_steps[1:]:
+          # for t in time_steps[1:]:
+          for i, t in enumerate(time_steps[1:]):
             # Prepare time steps for the whole batch
             time = t * torch.ones(xt.shape[0], device=xt.device)
 
@@ -481,13 +482,13 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
             sigma_prev = sigma_t
             sigma_bar_prev = sigma_bart
 
-            if (t + 1) % 10 == 0:
+            if (i + 1) % 1 == 0:
               samples.append(inverse_scaler(xt if denoise else x)[0])
 
           # return samples, sde.N * (n_steps + 1)
-          samples.append(inverse_scaler(xt if denoise else x)[0])
+          # samples.append(inverse_scaler(xt if denoise else x)[0])
 
-          return xt, n_steps
+          return samples, n_steps
   
 
   return pc_sampler

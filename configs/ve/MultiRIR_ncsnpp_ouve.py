@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Training NCSN++ on Church with VE SDE."""
+
 
 import ml_collections
 import torch
@@ -31,22 +31,22 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 2
-    training.n_iters = 75001
-    training.snapshot_freq = 5000
+    training.n_iters = 50000
+    training.snapshot_freq = 2000
     training.log_freq = 100
     training.eval_freq = 100
     ## store additional checkpoints for preemption in cloud computing environments
     training.snapshot_freq_for_preemption = 2000
     ## produce samples at each snapshot.
     training.snapshot_sampling = True
-    training.loss_type = "data_prediction"
+    training.loss_type = "data_prediction" # score_matching denoiser data_prediction
     training.continuous = True
     training.reduce_mean = False
-    training.sde = "sbvesde"
+    training.sde = "ouvesde"
 
     # sampling
     config.sampling = sampling = ml_collections.ConfigDict()
-    sampling.n_steps_each = 5
+    sampling.n_steps_each = 1
     sampling.noise_removal = True
     sampling.probability_flow = False
     sampling.snr = 0.33
@@ -56,8 +56,8 @@ def get_config() -> ml_collections.ConfigDict:
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 25
-    evaluate.end_ckpt = 25
+    evaluate.begin_ckpt = 15
+    evaluate.end_ckpt = 15
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
@@ -83,8 +83,8 @@ def get_config() -> ml_collections.ConfigDict:
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_source_back/"
-    data.num_room = 15000
+    data.npz_path = "./dataset_source_Tannoy/"
+    data.num_room = 2
     data.pos_per_room = 10
     data.sample_rate = 16000
 
@@ -93,8 +93,8 @@ def get_config() -> ml_collections.ConfigDict:
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    model.k = 2.0
-    model.c = 0.5
+    model.k = 2.6
+    model.c = 0.4
     # model.sigma_max = 0.7
     # model.sigma_min = 0.07
     model.sigma_max = 1.0
@@ -131,7 +131,7 @@ def get_config() -> ml_collections.ConfigDict:
     config.optim = optim = ml_collections.ConfigDict()
     optim.weight_decay = 0
     optim.optimizer = "Adam"
-    optim.lr = 1e-5
+    optim.lr = 1e-4
     optim.beta1 = 0.9
     optim.eps = 1e-8
     optim.warmup = 5000

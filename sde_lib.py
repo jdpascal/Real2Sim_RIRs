@@ -284,7 +284,7 @@ class SBVESDE(SDE):
 
     def sde(self, x, y, t):
         f = 0.0                                                                 # Table 1
-        g = torch.sqrt(torch.tensor(self.c)) * self.k**(t)                      # Table 1
+        g = torch.sqrt(torch.tensor(self.c)) * self.k ** (t)                      # Table 1
         return f, g
 
     def _sigmas_alphas(self, t):

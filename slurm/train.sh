@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:2            # Request N GPUs per machine
 #SBATCH --constraint=gputc
 #SBATCH --mem=0
-#SBATCH --time=0-20:00:00
+#SBATCH --time=0-10:00:00
 
 # Load correct python and cuda modules
 module load python/3.12.8
@@ -27,7 +27,7 @@ export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run main with training arguments
 srun python main.py \
-    --config configs/ve/MultiRIR_ncsnpp_continuous.py \
+    --config configs/ve/MultiRIR_ncsnpp_SBVE.py \
     --mode train \
     --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \

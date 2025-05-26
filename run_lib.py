@@ -376,7 +376,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
     )
     state = dict(optimizer=optimizer, model=score_model, ema=ema, step=0)
 
-    checkpoint_dir = os.path.join(workdir, "checkpoints_best_256_2")
+    checkpoint_dir = os.path.join(workdir, "checkpoints_SB")
 
     # Configuration de la SDE.
     sde_name = config.training.sde.lower()
@@ -389,9 +389,9 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
         sampling_eps = 1e-5
     elif sde_name == "sbvesde":
         sde = sde_lib.SBVESDE(
-            N=config.model.num_scales,
             k=config.model.k,
             c=config.model.c,
+            N=config.model.num_scales
         )
         sampling_eps = 1e-5
     else:
@@ -549,7 +549,8 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     del gen, perf, real
 
                 if (i + 1) * config.eval.batch_size <= rir_chunks_count :
-                    if i == 0:
+                    # if i == 0:
+                    if True :
                         big_rir_generated = np.zeros(
                             (config.data.total_rir_samples_count, config.data.channels)
                         )
@@ -572,12 +573,14 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     this_sample_dir = os.path.join(eval_dir, f"ckpt_{ckpt}")
                     os.makedirs(this_sample_dir, exist_ok=True)
                     samples, n = sampling_fn(score_model)
+                    logging.info("samples shape: %s", len(samples))
+                    logging.info("samples shape: %s", samples[0].shape)
 
                     if config.eval.enable_sampling:
                         for index, sample in enumerate(samples):
                             # Sauvegarde des échantillons générés.
                             sample_filepath = os.path.join(
-                                this_sample_dir, f"sample_{index}.npz"
+                                this_sample_dir, f"sample_{index}.npz" #_chunk{i}
                             )
                             with open(sample_filepath, "wb") as f:
                                 np.savez_compressed(
@@ -603,7 +606,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                             real_rir_sample, axis=0
                         )  # devient (longueur, canaux)
                     generated_sample = (
-                            samples[-1].detach().cpu().numpy()
+                            samples[-1].detach().cpu().numpy()   #[-1]
                         )  # forme: (epaisseur=1, longueur, canaux)
                     del samples
                     generated_sample = np.squeeze(

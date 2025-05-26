@@ -86,11 +86,11 @@ def get_sde_loss_fn(
     Returns:
       A loss function.
     """
-    # reduce_op = (
-    #     torch.mean
-    #     if reduce_mean
-    #     else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
-    # )
+    reduce_op = (
+        torch.mean
+        if reduce_mean
+        else lambda *args, **kwargs: 0.5 * torch.sum(*args, **kwargs)
+    )
 
     def loss_fn(model, batch):
         """Compute the loss function.
@@ -104,14 +104,14 @@ def get_sde_loss_fn(
         """
         x, y = batch
         score_fn = mutils.get_score_fn(sde, model, train=train, continuous=continuous)
-        t = torch.rand(x.shape[0], device=x.device) * (sde.T - eps) + eps
+        t = torch.rand(x.shape[0], device=x.device) * (sde.T - eps) + eps   
         z = torch.randn_like(x) 
         mean, std = sde.marginal_prob(batch, t)
         perturbed_data = mean + std[:, None, None, None] * z 
 
         score = score_fn(perturbed_data, t, y)
         # if not likelihood_weighting:
-        #     losses = torch.square( score * std[:, None, None, None] + z) #+ torch.abs(score * std[:, None, None, None] + z)
+        #     losses = torch.square( score * std[:, None, None, None] + z) 
         #     losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1)
         # else:
         #     g2 = sde.sde(torch.zeros_like(x), t)[1] ** 2
@@ -119,10 +119,11 @@ def get_sde_loss_fn(
         #     losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) * g2
                 
         if loss_type == "score_matching":
-            losses = torch.square(torch.abs(score * std[:, None, None, None] + z)) # Eq. (7)
+            losses = torch.square(score * std[:, None, None, None] + z) # Eq. (7)
 
             # Sum over spatial dimensions and channels and mean over batch
-            losses =  0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
+            # losses =  0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
+            losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) #* std[:, None, None, None].pow(2)
         elif loss_type == "denoiser":
             D = score * std[:, None, None, None].pow(2) + perturbed_data # equivalent to Eq. (10)
             losses = torch.square(torch.abs(D - mean)) # Eq. (8)
@@ -130,11 +131,12 @@ def get_sde_loss_fn(
             losses = 0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
         elif loss_type == "data_prediction":
             logging.info("Using data prediction loss")
-            B, C, T, Ch = x.shape
+            # B, C, T, Ch = x.shape
 
             # losses 
-            losses = (1 / ( Ch * T )) * torch.square(torch.abs(score - x))
-            losses = 0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
+            losses = torch.square(score - x)
+            # losses = 0.5 * torch.sum(losses.reshape(losses.shape[0], -1), dim=-1)
+            losses = reduce_op(losses.reshape(losses.shape[0], -1), dim=-1) #* std[:, None, None, None].pow(2)
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
 

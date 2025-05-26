@@ -372,7 +372,7 @@ class NCSNpp(nn.Module):
             for i_block in range(self.num_res_blocks):
                 # print("residual_block input", hs[-1].shape)
                 logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
-                torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
+                # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
                 h = modules[m_idx](hs[-1], temb)
                 m_idx += 1
                 # print("residual_block output", h.shape)

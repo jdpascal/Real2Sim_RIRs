@@ -190,6 +190,7 @@ def get_score_fn(sde, model, train=False, continuous=False):
             if continuous:
                 batch = (x, y)
                 labels = sde.marginal_prob(batch, t)[1]
+                # labels = t
             else:
                 # For VE-trained models, t=0 corresponds to the highest noise level
                 labels = sde.T - t
@@ -200,10 +201,11 @@ def get_score_fn(sde, model, train=False, continuous=False):
         
     elif isinstance(sde, sde_lib.SBVESDE):
         def score_fn(x, t, y):
-            logging.debug("Score function starts.")
+            # logging.info("Score function starts.")
             if continuous:
                 batch = (x, y)
                 labels = sde.marginal_prob(batch, t)[1]
+                # labels = t
             else:
                 # For VE-trained models, t=0 corresponds to the highest noise level
                 labels = sde.T - t

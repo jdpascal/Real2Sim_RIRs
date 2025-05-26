@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
         dest="precision",
         type=str,
         default="32-true",
-        choices=["bf16-mixed", "16-mixed", "16-true", "32-true"],
+        choices=["bf16-mixed", "16-mixed", "16-true", "32-true", "bf16-true"],
         help="Precision souhaitee, bf = brain float",
     )
     return parser.parse_args()
