@@ -24,7 +24,7 @@ export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run main with training arguments
 srun python main.py \
-    --config configs/ve/MultiRIR_ncsnpp_SB.py \
+    --config configs/ve/MultiRIR_ncsnpp_SBVE.py \
     --mode eval \
     --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \

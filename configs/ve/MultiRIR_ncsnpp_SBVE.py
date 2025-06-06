@@ -83,7 +83,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_source_Tannoy/"
+    data.npz_path = "./dataset_genelec_8030/"
     data.num_room = 2
     data.pos_per_room = 10
     data.sample_rate = 16000

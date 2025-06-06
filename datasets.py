@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms, datasets
 from pathlib import Path
-# import gzip
+import gzip
 
 # -------------------------
 # Fonctions de normalisation
@@ -89,11 +89,11 @@ class MultiRIRDataset(Dataset):
         # Get room number and position number from room index using euclidean division
         room_number = int(room_index / self.config.data.pos_per_room)
         pos_number = room_index % self.config.data.pos_per_room
-        room_filename = f"room_{room_number}_{pos_number}.json"
+        room_filename = f"room_{room_number}_{pos_number}.json.gz"
 
-        # with gzip.open(Path(self.root_dir) / room_filename, 'r') as json_file:
-        with open(Path(self.root_dir) / room_filename, 'r') as json_file:
-            room_data = json.load(json_file)
+        with gzip.open(Path(self.root_dir) / room_filename, 'rb') as json_file:
+        # with open(Path(self.root_dir) / room_filename, 'r') as json_file:
+            room_data = json.loads(json_file.read().decode('utf-8'))
             sample = {
                 'perfect_rir': np.array(room_data['perfect_rir'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count

@@ -11,4 +11,4 @@ module load cuda/cuda-12.1
 # Activate python environment
 source venv/bin/activate
 
-python RIR_generation/generate_rirs.py
+python RIR_generation/generate_rirs_genelec8030.py

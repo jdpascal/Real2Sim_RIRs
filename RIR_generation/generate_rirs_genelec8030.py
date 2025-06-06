@@ -4,6 +4,8 @@ import logging
 import os
 import sys
 from pathlib import Path
+import gzip
+
 
 import numpy as np
 import pyroomacoustics as pra
@@ -19,14 +21,14 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 2
+num_room = 100000
 positions_per_room = 10
-distance_src_mics = 1
+distance_src_mics = 1.35
 dist_mur = 1
 max_order_ism = 10
-delay = 83
+delay = 78
 limit = 1024
-crop_start = 70
+crop_start = 80
 
 # Coefficient of absorption more real, per octave band, per walls
 abs_coeffs_lower_bound = np.array(
@@ -55,9 +57,8 @@ center_freqs = [125, 250, 500, 1000, 2000, 4000, 8000]
 
 
 def calculate_rirs_for_config(
-    eigenmike: MeasuredDirectivityFile,
-    src_dir: MeasuredDirectivityFile,
-    genelec8030: MeasuredDirectivity,
+    list_dir: list,
+    genelec8030 ,
     room_dim: list[float],
     pos_src: np.ndarray,
     pos_mics: np.ndarray,
@@ -131,12 +132,8 @@ def calculate_rirs_for_config(
     genelec8030.set_orientation(orientation)
     room_real.add_source(pos_src, directivity=genelec8030)
     # Get the directivity objects from the files and add mics
-    list_dir = []
     for j in range(32):
-        dir_obj_Emic = eigenmike.get_mic_directivity(
-            f"EM_32_{j}", orientation=orientation_mic
-        )
-        list_dir.append(dir_obj_Emic)
+        (list_dir[j]).set_orientation(orientation_mic)
     room_real.add_microphone_array(
         (np.zeros((32,3)) + pos_mics).T, directivity=list_dir
     )  # , directivity=list_dir
@@ -238,8 +235,9 @@ def calculate_rirs_for_config(
     }
     # Write the contents of this dict to a file named with the number of the room and
     # current src/rcv position iteration
-    with open(output_file_path, "w", encoding="utf-8") as f:
-        json.dump(room_data, f, indent=4)
+    with gzip.open(output_file_path, "wt", encoding="utf-8") as f:
+        json.dump(room_data, f)
+
 
 
 def main():
@@ -249,13 +247,20 @@ def main():
     # list = download_sofa_files()
 
     # Reads the file containing the Eigenmike's directivity measurements
-    eigenmike = MeasuredDirectivityFile("EM32_Directivity", fs=16000)
+    eigenmike = MeasuredDirectivityFile("EM32_Directivity", fs=16000, interp_order=18)
 
     # Reads the file containing Genelec 8020 's directivity measurements
     src_dir = MeasuredDirectivityFile(
-        "LS_directivity_Calibrated_GENELEC_8030B", fs=16000
+        "LS_directivity_Calibrated_GENELEC_8030B", fs=16000, interp_order=18
     )
     genelec8030 = src_dir.get_source_directivity(0, orientation=Rotation3D([0, 0], "zy", degrees=True))
+
+    list_dir = []
+    for j in range(32):
+        dir_obj_Emic = eigenmike.get_mic_directivity(
+            f"EM_32_{j}", orientation=Rotation3D([0, 0], "zy", degrees=True)
+        )
+        list_dir.append(dir_obj_Emic)
 
     path = db["EM32_Directivity"].path
     files = sf.open_sofa_file(path)
@@ -283,7 +288,7 @@ def main():
     logger.info("Début de la génération des données.")
 
     configurations = []
-    for room_index in range(0, num_room):
+    for room_index in range(465, num_room):
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]
@@ -296,14 +301,13 @@ def main():
             )
             configurations.append(
                 (
-                    eigenmike,
-                    src_dir,
+                    list_dir,
                     genelec8030,
                     room_dim,
                     pos_src,
                     pos_mics,
                     pos_eigenmike,
-                    Path(workdir) / f"room_{room_index}_{position_index}.json",
+                    Path(workdir) / f"room_{room_index}_{position_index}.json.gz",
                 )
             )
 

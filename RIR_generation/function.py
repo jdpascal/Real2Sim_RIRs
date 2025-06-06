@@ -51,7 +51,7 @@ def fibonacci(samples=32, rds=0.042):
 
 # murs entre 2,5 et 5 metres, plafond entre 3 et 5
 def generate_random_room_dimensions(
-    min_size_x=2.5, max_size_x=5, min_size_y=3, max_size_y=5, min_size_z=3, max_size_z=5
+    min_size_x=3.5, max_size_x=5.5, min_size_y=3.5, max_size_y=8, min_size_z=3.5, max_size_z=6
 ):
     # Génère aléatoirement les dimensions de la salle (L, W, H)
     L = np.random.uniform(min_size_x, max_size_x)
