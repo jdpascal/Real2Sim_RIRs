@@ -56,8 +56,8 @@ def get_config() -> ml_collections.ConfigDict:
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 15
-    evaluate.end_ckpt = 15
+    evaluate.begin_ckpt = 25
+    evaluate.end_ckpt = 25
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
@@ -83,7 +83,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_genelec_8030/"
+    data.npz_path = "./dataset_ircam/"
     data.num_room = 2
     data.pos_per_room = 10
     data.sample_rate = 16000
