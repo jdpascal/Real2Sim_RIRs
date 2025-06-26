@@ -31,7 +31,7 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 2
-    training.n_iters = 50000
+    training.n_iters = 100000
     training.snapshot_freq = 2000
     training.log_freq = 100
     training.eval_freq = 100
@@ -83,7 +83,7 @@ def get_config() -> ml_collections.ConfigDict:
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_ircam/"
+    data.npz_path = "./dataset_genelec_8030_near_measure/"
     data.num_room = 2
     data.pos_per_room = 10
     data.sample_rate = 16000

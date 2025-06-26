@@ -1,6 +1,6 @@
 #!/bin/bash -l
 
-#SBATCH -n 64                # 64 cœurs
+#SBATCH -n 32                # 64 cœurs
 #SBATCH --mem=0
 #SBATCH --time=0-20:00:00
 
@@ -11,4 +11,4 @@ module load cuda/cuda-12.1
 # Activate python environment
 source venv/bin/activate
 
-python RIR_generation/generate_rirs_genelec8030.py
+python RIR_generation/generate_rirs_genelec8030_more_diversity.py

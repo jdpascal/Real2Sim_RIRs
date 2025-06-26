@@ -98,7 +98,7 @@ class MultiRIRDataset(Dataset):
                 'perfect_rir': np.array(room_data['perfect_rir'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
-                'real_rir': np.array(room_data['measure'])[
+                'real_rir': np.array(room_data['real_rir'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
                 'rir_chunk_index': chunk_index,

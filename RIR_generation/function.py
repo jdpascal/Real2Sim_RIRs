@@ -51,7 +51,7 @@ def fibonacci(samples=32, rds=0.042):
 
 # murs entre 2,5 et 5 metres, plafond entre 3 et 5
 def generate_random_room_dimensions(
-    min_size_x=3.5, max_size_x=5.5, min_size_y=3.5, max_size_y=8, min_size_z=3.5, max_size_z=6
+    min_size_x=7.5, max_size_x=10, min_size_y=3.5, max_size_y=6, min_size_z=2.0, max_size_z=4
 ):
     # Génère aléatoirement les dimensions de la salle (L, W, H)
     L = np.random.uniform(min_size_x, max_size_x)
@@ -63,38 +63,25 @@ def generate_random_room_dimensions(
 def generate_random_points(L, W, H, distance, distance_murs=1.5):
     # Assurer que la salle est assez grande pour placer deux points à une distance donnée
     if min(L, W, H) <= distance:
-        raise ValueError(
-            "La salle est trop petite pour placer les points à la distance spécifiée."
-        )
-
+        raise ValueError("La salle est trop petite pour placer les points à la distance spécifiée.")
+    # Assurer que la distance des murs est respectée
+    if distance_murs >= min(L, W, H) / 2:
+        raise ValueError("La distance des murs est trop grande par rapport aux dimensions de la salle.")
     # Placer le premier point de manière aléatoire dans la salle
-    point1 = np.array(
-        [
-            np.random.uniform(distance, L - distance),
-            np.random.uniform(distance, W - distance),
-            np.random.uniform(distance, H - distance),
-        ]
-    )
-
+    point1 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+                       np.random.uniform(distance_murs, W - distance_murs),
+                       np.random.uniform(distance_murs, H - distance_murs)])
+    
     # Placer le deuxième point à la distance donnée du premier point
-    # Choisir une direction aléatoire pour le deuxième point
-    theta = np.random.uniform(0, 2 * np.pi)  # Angle dans le plan XY
-    phi = np.random.uniform(0, np.pi)  # Angle dans le plan Z
-    x2 = point1[0] + distance * np.sin(phi) * np.cos(theta)
-    y2 = point1[1] + distance * np.sin(phi) * np.sin(theta)
-    z2 = point1[2] + distance * np.cos(phi)
-
-    # Vérifier que le deuxième point est dans la salle et à une distance suffisante des bords
-    if not (
-        distance_murs <= x2 <= L - distance_murs
-        and distance_murs <= y2 <= W - distance_murs
-        and distance_murs <= z2 <= H - distance_murs
-    ):
-        return generate_random_points(
-            L, W, H, distance, distance_murs
-        )  # Si le point est trop proche des bords, refaire
-
-    point2 = np.array([x2, y2, z2])
+    point2 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+                       np.random.uniform(distance_murs, W - distance_murs),
+                       np.random.uniform(distance_murs, H - distance_murs)])
+    while np.linalg.norm(point2 - point1) < distance:
+        point2 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+                           np.random.uniform(distance_murs, W - distance_murs),
+                           np.random.uniform(distance_murs, H - distance_murs)])
+    point2 = point1 + (point2 - point1) * (distance / np.linalg.norm(point2 - point1))
+    
     return point1, point2
 
 
