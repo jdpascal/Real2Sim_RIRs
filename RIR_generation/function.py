@@ -87,20 +87,21 @@ def generate_random_points(L, W, H, distance, distance_murs=1.5):
 
 def cartesian_to_spherical(cartesian_coords):
     x, y, z = cartesian_coords
-
+    
     # Calcul de la distance radiale
     r = np.sqrt(x**2 + y**2 + z**2)
-
+    
     # Calcul de l'azimut (angle dans le plan XY)
-    theta = np.arctan2(y, x)  # Utilise np.arctan2 pour éviter les problèmes de signes
+    phi = np.arctan2(y, x)  # Utilise np.arctan2 pour éviter les problèmes de signes
 
-    # Calcul de l'élévation (angle avec l'axe Z)
-    phi = np.arccos(z / r) if r.all() != 0 else 0  # Si r = 0, on évite une division par zéro
+    rho   = np.hypot(x, y)               # projection sur le plan XY
+    theta = np.arctan2(z, rho)           # élévation
+    # phi   = 0.0                          # roulis
 
     # Conversion des angles en degrés
     theta_deg = np.degrees(theta)
     phi_deg = np.degrees(phi)
-
+    
     return r, theta_deg, phi_deg
 
 # def random_angles():

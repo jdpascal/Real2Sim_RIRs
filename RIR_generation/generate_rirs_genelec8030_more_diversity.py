@@ -21,7 +21,7 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 15000
+num_room = 10000
 positions_per_room = 10
 distance_src_mics = 1.53
 dist_mur = 1
@@ -61,6 +61,7 @@ def calculate_rirs_for_config(
     genelec8030 ,
     room_dim: list[float],
     pos_src: np.ndarray,
+    uncertainty_pos,
     pos_mics: np.ndarray,
     pos_eigenmike,
     output_file_path: Path,
@@ -69,13 +70,19 @@ def calculate_rirs_for_config(
     """
     Calculates RIRs for the given configuration and writes result to an output JSON file.
     """
+    logging.info(f"Calculating RIRs for configuration: {output_file_path}")
     # Orientation, test with source turn his back to the mics
     cartesian_coords = pos_mics - pos_src
     r, theta, phi = fun.cartesian_to_spherical(cartesian_coords) # remove the "-" to have the source facing the mics
+    pos_src += uncertainty_pos
+    uncertainty_angle = np.random.rand(2) * 10 - 5      # Random uncertainty in the angle of 5 degrees
+    theta += uncertainty_angle[0]
+    phi += uncertainty_angle[1]
+
     # theta_src, phi_src = fun.random_angles()
-    orientation = Rotation3D([theta , phi], "zy", degrees=True)
+    orientation = Rotation3D([ -theta, phi ], "yz", degrees=True)
     theta_mic, phi_mic = fun.random_angles()
-    orientation_mic = Rotation3D([theta_mic, phi_mic], "zy", degrees=True)
+    orientation_mic = Rotation3D([-theta_mic, phi_mic], "yz", degrees=True)
 
     # Pick random coefficient for absorption but realistic
     P = np.random.uniform(abs_coeffs_lower_bound, abs_coeffs_upper_bound)
@@ -155,7 +162,8 @@ def calculate_rirs_for_config(
         ray_tracing=False,
         min_phase=True,
         use_rand_ism=True,
-        max_rand_disp=0.08
+        max_rand_disp=0.2,
+        flip_walls=True,
     )
 
     # Add source and microphone
@@ -178,7 +186,8 @@ def calculate_rirs_for_config(
         ray_tracing=False,
         min_phase=True,
         use_rand_ism=True,
-        max_rand_disp=0.08,
+        max_rand_disp=0.2,
+        flip_walls=False,
     )
 
     # Add source and microphone omnidirectionnal
@@ -190,46 +199,19 @@ def calculate_rirs_for_config(
         list_pos.append(np.array(new_pos))
     room_perfect.add_microphone_array((list_pos + pos_mics).T) 
     # room_perfect.add_microphone_array((pos_eigenmike.T + pos_mics).T)
+    # logging.info(
+    #     f"Room created with dimensions: {room_dim}, source position: {pos_src}, microphone positions: {pos_mics}"
+    # )
 
     # Compute the RIR
     np.random.seed(seed)  # For reproducibility
     room_real.compute_rir()
+    # logging.info("RIR computed for the real room.")
     np.random.seed(seed)  # For reproducibility
     room_perfect.compute_rir()
-    # rir_real = room_real.rir
+    # logging.info("RIR computed for the perfect room.")
+    rir_real = room_real.rir
     rir_perfect = room_perfect.rir
-    rir_edit = [np.array([None ]) for _ in range(32)]
-    idx_vis = np.where(room_real.visibility[0][0])
-
-    for k in range(len(idx_vis[0])):
-        # Indices d’images visibles pour ce (src, mic)
-        random = np.random.rand()
-        for mic_id in range(32):
-            mask = np.zeros_like(room_real.visibility[0][mic_id], dtype=bool)
-            mask[k] = True                    # ne laisser passer qu’une image-source
-
-            h_k = pra.simulation.compute_ism_rir(
-                room_real.sources[0],
-                room_real.mic_array.R[:, mic_id],
-                room_real.mic_array.directivity[mic_id],
-                mask,
-                pra.constants.get("frac_delay_length"),
-                room_real.c,
-                room_real.fs,
-                room_real.octave_bands,
-                min_phase=room_real.min_phase,
-                air_abs_coeffs=room_real.air_absorption,
-            )
-            if  random < 0.5:
-                h_k *= -1.0
-
-            # addition au RIR final
-            if rir_edit[mic_id][0] is None:
-                rir_edit[mic_id] = h_k.copy()
-            else:
-                if h_k.size > (rir_edit[mic_id]).size:
-                    rir_edit[mic_id] = np.pad(rir_edit[mic_id], (0, h_k.size - (rir_edit[mic_id]).size))
-                rir_edit[mic_id][:h_k.size] += h_k
 
     # Reshape and transform as array instead of list of list
     max_perfect = np.max(np.array([(rir_perfect[i][0]).shape[0] for i in range(32)]))
@@ -254,13 +236,36 @@ def calculate_rirs_for_config(
         )
 
     test_perfect = test_perfect.reshape(32, max_perfect)
-    real_rir = np.array(rir_edit)
-    real_rir = real_rir[:, crop_start + delay : crop_start + limit + delay] / np.max( np.abs(
-        real_rir[:, crop_start + delay : crop_start + limit + delay]))
+    max_real = np.max(np.array([(rir_real[i][0]).shape[0] for i in range(32)]))
+    test_real = np.pad(
+        np.array(rir_real[0][0]),
+        (0, max_real - len(rir_real[0][0])),
+        "constant",
+        constant_values=[0, 0],
+    )
+
+    for i in range(1, 32):
+        test_real = np.concatenate(
+            (
+                test_real,
+                np.pad(
+                    np.array(rir_real[i][0]),
+                    (0, max_real - len(rir_real[i][0])),
+                    "constant",
+                    constant_values=[0, 0],
+                ),
+            )
+        )
+
+    test_real = test_real.reshape(32, max_real)
+
+    # real_rir = np.array(rir_edit)
+    real_rir = test_real[:, crop_start + delay : crop_start + limit + delay] #/ np.max( np.abs(
+        # test_real[:, crop_start + delay : crop_start + limit + delay]))
     real_rir = real_rir / np.max( np.abs(real_rir) )
-    perfect_rir = test_perfect[:, crop_start : crop_start + limit] / np.max( np.abs(
-        test_perfect[:, crop_start : crop_start + limit]))
-    # perfect_rir = perfect_rir / np.max( np.abs(perfect_rir) )
+    perfect_rir = test_perfect[:, crop_start : crop_start + limit] #/ np.max( np.abs(
+        # test_perfect[:, crop_start : crop_start + limit]))
+    perfect_rir = perfect_rir / np.max( np.abs(perfect_rir) )
     # Store all calculated values for this configuration in a dict
     # We need to use tolist() here to convert from numpy arrays to python arrays that can be serialized to json
     room_data = {
@@ -294,12 +299,12 @@ def main():
     src_dir = MeasuredDirectivityFile(
         "LS_directivity_Calibrated_GENELEC_8030B", fs=16000, interp_order=18
     )
-    genelec8030 = src_dir.get_source_directivity(0, orientation=Rotation3D([0, 0], "zy", degrees=True))
+    genelec8030 = src_dir.get_source_directivity(0, orientation=Rotation3D([0, 0], "yz", degrees=True))
 
     list_dir = []
     for j in range(32):
         dir_obj_Emic = eigenmike.get_mic_directivity(
-            f"EM_32_{j}", orientation=Rotation3D([0, 0], "zy", degrees=True)
+            f"EM_32_{j}", orientation=Rotation3D([0, 0], "yz", degrees=True)
         )
         list_dir.append(dir_obj_Emic)
 
@@ -329,23 +334,25 @@ def main():
     logger.info("Début de la génération des données.")
 
     configurations = []
-    for room_index in range(15, num_room):
+    for room_index in range(5000, num_room):
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]
         # Generate #positions_per_room mesures in the room
         for position_index in range(positions_per_room):
             # Generate 2 random points in the room, with constraints on location
-            approx = fun.approximation_distance(0.15)
+            approx = fun.approximation_distance(0.1)
             pos_src, pos_mics = fun.generate_random_points(
                 Dx, Dy, Dz, distance_src_mics + approx, dist_mur
             )
+            uncertainty_pos = (np.random.rand(3) * 2 -1) / 10     # Random uncertainty in the position of 10 cm
             configurations.append(
                 (
                     list_dir,
                     genelec8030,
                     room_dim,
                     pos_src,
+                    uncertainty_pos,
                     pos_mics,
                     pos_eigenmike,
                     Path(workdir) / f"room_{room_index}_{position_index}.json.gz",

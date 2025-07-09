@@ -1,6 +1,6 @@
 #!/bin/bash -l
 
-#SBATCH -n 32                # 64 cœurs
+#SBATCH -n 64                # 64 cœurs
 #SBATCH --mem=0
 #SBATCH --time=0-20:00:00
 

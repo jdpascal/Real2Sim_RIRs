@@ -21,14 +21,14 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 100000
+num_room = 15000
 positions_per_room = 10
-distance_src_mics = 1.35
+distance_src_mics = 1.53
 dist_mur = 1
 max_order_ism = 10
 delay = 78
 limit = 1024
-crop_start = 80
+crop_start = 85
 
 # Coefficient of absorption more real, per octave band, per walls
 abs_coeffs_lower_bound = np.array(
@@ -288,7 +288,7 @@ def main():
     logger.info("Début de la génération des données.")
 
     configurations = []
-    for room_index in range(465, num_room):
+    for room_index in range(1400, num_room):
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]
