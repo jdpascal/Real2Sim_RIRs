@@ -116,7 +116,7 @@ def cartesian_to_spherical(cartesian_coords):
 
 
 def random_angles():
-    rand_x, rand_y, rand_z = np.random.rand(3)                  # three independent random numbers from a uniform distribution in the range (0, 1)
+    rand_x, rand_y, rand_z = np.random.rand(3) * 2 -1                  # three independent random numbers from a uniform distribution in the range (0, 1)
     theta, phi = cartesian_to_spherical([rand_x, rand_y, rand_z])[1:] # Spherical coordinate theta and phi
     return( theta, phi )
 

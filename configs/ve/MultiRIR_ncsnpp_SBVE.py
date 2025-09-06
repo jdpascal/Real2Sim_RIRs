@@ -31,7 +31,7 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 2
-    training.n_iters = 100000
+    training.n_iters = 50000
     training.snapshot_freq = 2000
     training.log_freq = 100
     training.eval_freq = 100
@@ -56,8 +56,8 @@ def get_config() -> ml_collections.ConfigDict:
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 35
-    evaluate.end_ckpt = 35
+    evaluate.begin_ckpt = 40
+    evaluate.end_ckpt = 40
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
@@ -83,9 +83,9 @@ def get_config() -> ml_collections.ConfigDict:
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_genelec_8030_near_measure/"
-    # data.npz_path = "./dataset_ircam/"
-    data.num_room = 15000
+    # data.npz_path = "./dataset_genelec_8030_near_measure/"
+    data.npz_path = "./dataset_ircam/"
+    data.num_room = 2
     data.pos_per_room = 10
     data.sample_rate = 16000
 
@@ -106,6 +106,7 @@ def get_config() -> ml_collections.ConfigDict:
     model.normalization = "GroupNorm"
     model.nonlinearity = "elu"  # "lrelu"
     model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
+    # model.nf = int(data.rir_samples_count / data.first_stride_convolution / 4) # for 512 samples
     model.ch_mult = (2,2,4,4,4,4) # for 256 samples
     # model.ch_mult = (1,1,1,2,2,2,2) # for 512 samples
     model.num_res_blocks = 3

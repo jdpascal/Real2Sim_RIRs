@@ -4,7 +4,7 @@
 #SBATCH --nodes=1               # This needs to match --ddp-nodes
 #SBATCH --ntasks-per-node=2     # This needs to match --ddp-devices-per-node
 #SBATCH --gres=gpu:2            # Request N GPUs per machine
-#SBATCH --constraint=gputc
+
 #SBATCH --mem=0
 #SBATCH --time=0-20:00:00
 

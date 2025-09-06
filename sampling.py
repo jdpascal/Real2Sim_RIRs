@@ -514,7 +514,6 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
   Returns:
     A sampling function that returns samples and the number of function evaluations during sampling.
   """
-
   def denoise_update_fn(model, x):
     score_fn = get_score_fn(sde, model, train=False, continuous=True)
     # Reverse diffusion predictor for denoising
@@ -528,41 +527,100 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
     score_fn = get_score_fn(sde, model, train=False, continuous=True)
     rsde = sde.reverse(score_fn, probability_flow=True)
     return rsde.sde(x, t)[0]
+  
+  if isinstance(sde, sde_lib.OUVESDE) :
+    def ode_sampler(model, z=None):
+      """The probability flow ODE sampler with black-box ODE solver.
 
-  def ode_sampler(model, z=None):
-    """The probability flow ODE sampler with black-box ODE solver.
+      Args:
+        model: A score model.
+        z: If present, generate samples from latent code `z`.
+      Returns:
+        samples, number of function evaluations.
+      """
+      with torch.no_grad():
+        # Initial sample
+        if z is None:
+          # If not represent, sample the latent code from the prior distibution of the SDE.
+          x = sde.prior_sampling(shape)
+        else:
+          x = z
 
-    Args:
-      model: A score model.
-      z: If present, generate samples from latent code `z`.
-    Returns:
-      samples, number of function evaluations.
-    """
-    with torch.no_grad():
-      # Initial sample
-      if z is None:
-        # If not represent, sample the latent code from the prior distibution of the SDE.
-        x = sde.prior_sampling(shape)
-      else:
-        x = z
+        def ode_func(t, x):
+          x = from_flattened_numpy(x, shape)
+          vec_t = torch.ones(shape[0]) * t
+          drift = drift_fn(model, x, vec_t)
+          return to_flattened_numpy(drift)
 
-      def ode_func(t, x):
-        x = from_flattened_numpy(x, shape)
-        vec_t = torch.ones(shape[0]) * t
-        drift = drift_fn(model, x, vec_t)
-        return to_flattened_numpy(drift)
+        # Black-box ODE solver for the probability flow ODE
+        solution = integrate.solve_ivp(ode_func, (sde.T, eps), to_flattened_numpy(x),
+                                      rtol=rtol, atol=atol, method=method)
+        nfe = solution.nfev
+        x = torch.tensor(solution.y[:, -1]).reshape(shape)
 
-      # Black-box ODE solver for the probability flow ODE
-      solution = integrate.solve_ivp(ode_func, (sde.T, eps), to_flattened_numpy(x),
-                                     rtol=rtol, atol=atol, method=method)
-      nfe = solution.nfev
-      x = torch.tensor(solution.y[:, -1]).reshape(shape)
+        # Denoising is equivalent to running one predictor step without adding noise
+        if denoise:
+          x = denoise_update_fn(model, x)
 
-      # Denoising is equivalent to running one predictor step without adding noise
-      if denoise:
-        x = denoise_update_fn(model, x)
+        x = inverse_scaler(x)
+        return x, nfe
+      
+  elif isinstance(sde, sde_lib.SBVESDE) :
+    def ode_sampler(model, z=None):
+      """The probability flow ODE sampler with black-box ODE solver.
 
-      x = inverse_scaler(x)
-      return x, nfe
+      Args:
+        model: A score model.
+        z: If present, generate samples from latent code `z`.
+      Returns:
+        samples, number of function evaluations.
+      """
+      with torch.no_grad():
+        xt = y
+        time_steps = torch.linspace(sde.T, eps, sde.N + 1, device=y.device)
 
+        # Initial values
+        time_prev = time_steps[0] * torch.ones(xt.shape[0], device=xt.device)
+        sigma_prev, sigma_T, sigma_bar_prev, alpha_prev, alpha_T, alpha_bar_prev = sde._sigmas_alphas(time_prev)
+
+        for t in time_steps[1:]:
+            # Prepare time steps for the whole batch
+            time = t * torch.ones(xt.shape[0], device=xt.device)
+
+            # Get noise schedule for current time
+            sigma_t, sigma_T, sigma_bart, alpha_t, alpha_T, alpha_bart = sde._sigmas_alphas(time)
+
+            # Run DNN
+            score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
+            current_estimate = score_fn(xt, time, y)
+
+
+            # Calculate scaling for the first-order discretization from the paper
+            weight_prev = alpha_t * sigma_t * sigma_bart / (alpha_prev * sigma_prev * sigma_bar_prev + sde.eps)
+            weight_estimate = (
+                alpha_t
+                / (sigma_T**2 + sde.eps)
+                * (sigma_bart**2 - sigma_bar_prev * sigma_t * sigma_bart / (sigma_prev + sde.eps))
+            )
+            weight_prior_mean = (
+                alpha_t
+                / (alpha_T * sigma_T**2 + sde.eps)
+                * (sigma_t**2 - sigma_prev * sigma_t * sigma_bart / (sigma_bar_prev + sde.eps))
+            )
+
+            # View as [B, C, D, T]
+            weight_prev = weight_prev[:, None, None, None]
+            weight_estimate = weight_estimate[:, None, None, None]
+            weight_prior_mean = weight_prior_mean[:, None, None, None]
+
+            # Update state: weighted sum of previous state, current estimate and prior
+            xt = weight_prev * xt + weight_estimate * current_estimate + weight_prior_mean * y
+
+            # Save previous values
+            time_prev = time
+            alpha_prev = alpha_t
+            sigma_prev = sigma_t
+            sigma_bar_prev = sigma_bart
+
+        return xt, n_steps
   return ode_sampler

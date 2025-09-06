@@ -177,6 +177,7 @@ class NCSNpp(nn.Module):
         modules.append(conv3x3(
             config.data.channels * 2,
             int(config.data.rir_samples_count / stride_first_convolution),
+            # 256,
             stride=stride_first_convolution,
             kernel_size=(9,1),
             padding=(4,0)
@@ -303,6 +304,7 @@ class NCSNpp(nn.Module):
 
         modules.append(
             nn.ConvTranspose2d(
+                # 256,
                 int(config.data.rir_samples_count / stride_first_convolution),
                 config.data.channels,
                 kernel_size=(9, 1),

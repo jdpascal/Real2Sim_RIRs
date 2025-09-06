@@ -51,6 +51,18 @@ def no_geometric_attenuation(rir, len):
     rir["perfect_rir"] = rir["perfect_rir"] / 2 /  np.max(rir["perfect_rir"]) + 0.5
     return( rir )
 
+def choose_random_channel(rir):
+    """
+    Sélectionne un canal aléatoire dans les RIR.
+    """
+    random_channel = np.random.randint(0, 32)
+    rir["real_rir"] = rir["real_rir"][random_channel, None, :]
+    rir["real_rir"] = rir["real_rir"][np.newaxis,:]  # Ajoute une dimension pour le batch
+    rir["perfect_rir"] = rir["perfect_rir"][random_channel, None, :]
+    rir["perfect_rir"] = rir["perfect_rir"][np.newaxis,:]   # Ajoute une dimension pour le batch
+
+    return rir
+
 # -------------------------
 # Dataset personnalisé pour MultiRIR
 # -------------------------
@@ -98,7 +110,7 @@ class MultiRIRDataset(Dataset):
                 'perfect_rir': np.array(room_data['perfect_rir'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
-                'real_rir': np.array(room_data['real_rir'])[
+                'real_rir': np.array(room_data['measure'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
                 'rir_chunk_index': chunk_index,
@@ -144,13 +156,13 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
             root_dir=config.data.npz_path,
             config=config,
             mode="train",
-            # transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
+            # transform=transforms.Lambda(lambda x: choose_random_channel(x))
         )
         eval_dataset = MultiRIRDataset(
             root_dir=config.data.npz_path,
             config=config,
             mode="eval",
-            # transform=transforms.Lambda(lambda x: no_geometric_attenuation(x, config.data.rir_samples_count))
+            # transform=transforms.Lambda(lambda x: choose_random_channel(x))
         )
     else:
         raise NotImplementedError(f"Dataset {config.data.dataset} non supporté.")
