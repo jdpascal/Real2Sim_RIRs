@@ -21,9 +21,9 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 5000
-positions_per_room = 10
-distance_src_mics = 1.60
+num_room = 150
+positions_per_room = 3
+distance_src_mics = 1.63
 dist_mur = 1
 max_order_ism = 10
 delay = 78
@@ -73,7 +73,7 @@ def calculate_rirs_for_config(
     logging.info(f"Calculating RIRs for configuration: {output_file_path}")
     # Orientation, test with source turn his back to the mics
     cartesian_coords = pos_mics - pos_src
-    r, theta, phi = fun.cartesian_to_spherical(cartesian_coords) # remove the "-" to have the source facing the mics
+    r, theta, phi = fun.cartesian_to_spherical(cartesian_coords)
     pos_src += uncertainty_pos
     uncertainty_angle = np.random.rand(2) * 10 - 5      # Random uncertainty in the angle of 5 degrees
     theta += uncertainty_angle[0]
@@ -266,6 +266,24 @@ def calculate_rirs_for_config(
     perfect_rir = test_perfect[:, crop_start : crop_start + limit] #/ np.max( np.abs(
         # test_perfect[:, crop_start : crop_start + limit]))
     perfect_rir = perfect_rir / np.max( np.abs(perfect_rir) )
+    for s, src in enumerate(room_perfect.sources):
+        order = src.orders
+        src_image = (src.images)
+        list_src = []
+        list_ordre = []
+        for i in range(src_image.shape[1]):
+            if np.linalg.norm(src_image[: , i] - pos_mics) < 7.4:
+                list_src.append(src_image[:, i] - pos_mics)
+                list_ordre.append(order[i])
+
+        list_src = np.array(list_src)
+        list_ordre = np.array(list_ordre)
+        # simplifiée puis algo de tom
+        idx_sorted = np.argsort(np.linalg.norm(list_src,axis=1))
+        x_sorted = list_src[idx_sorted]
+        list_src = x_sorted
+        x_sorted_ord = list_ordre[idx_sorted]
+        list_ordre = x_sorted_ord
     # Store all calculated values for this configuration in a dict
     # We need to use tolist() here to convert from numpy arrays to python arrays that can be serialized to json
     room_data = {
@@ -278,6 +296,8 @@ def calculate_rirs_for_config(
             "pos_mics": pos_mics.tolist(),
         },
         "abs_coeffs": band_abs_profiles.tolist(),
+        'verite' : list_src.tolist(),#np.sort(np.linalg.norm(list_src, axis=1)),
+        'ordre' : list_ordre.tolist(),
     }
     # Write the contents of this dict to a file named with the number of the room and
     # current src/rcv position iteration
@@ -312,7 +332,7 @@ def main():
     files = sf.open_sofa_file(path)
     pos_eigenmike = files[3]
 
-    workdir = "./dataset_genelec_8030_near_measure/"
+    workdir = "./dataset_genelec_8030_near_measure_eval/"
     os.makedirs(workdir, exist_ok=True)
 
     # --- Configuration du logger pour écrire dans un fichier ---
@@ -341,9 +361,9 @@ def main():
         # Generate #positions_per_room mesures in the room
         for position_index in range(positions_per_room):
             # Generate 2 random points in the room, with constraints on location
-            approx = fun.approximation_distance(0.1)
+            # approx = fun.approximation_distance(0.01)
             pos_src, pos_mics = fun.generate_random_points(
-                Dx, Dy, Dz, distance_src_mics + approx, dist_mur
+                Dx, Dy, Dz, distance_src_mics , dist_mur
             )
             uncertainty_pos = (np.random.rand(3) * 2 -1) / 10     # Random uncertainty in the position of 10 cm
             configurations.append(

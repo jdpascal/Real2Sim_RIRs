@@ -101,6 +101,8 @@ def get_sampling_fn(config, sde, shape, inverse_scaler, eps, y=None):
                                   y=y,
                                   inverse_scaler=inverse_scaler,
                                   denoise=config.sampling.noise_removal,
+                                  n_steps=config.sampling.n_steps_each,
+                                  continuous=config.training.continuous,
                                   eps=eps)
   # Predictor-Corrector sampling. Predictor-only and Corrector-only samplers are special cases.
   elif sampler_name.lower() == 'pc':
@@ -430,6 +432,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
       
   elif isinstance(sde, sde_lib.SBVESDE) :
     def pc_sampler(model):
+      logging.info("sde chosen")
       """
       The SB-SDE sampler function
       """
@@ -494,7 +497,7 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr, y=None
   return pc_sampler
 
 
-def get_ode_sampler(sde, shape, inverse_scaler, y=None,
+def get_ode_sampler(sde, shape, inverse_scaler, y=None, continuous=True,n_steps=1,
                     denoise=False, rtol=1e-5, atol=1e-5,
                     method='RK45', eps=1e-3):
   """Probability flow ODE sampler with the black-box ODE solver.
@@ -529,6 +532,7 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
     return rsde.sde(x, t)[0]
   
   if isinstance(sde, sde_lib.OUVESDE) :
+    logging.info("ode chosen")
     def ode_sampler(model, z=None):
       """The probability flow ODE sampler with black-box ODE solver.
 
@@ -585,7 +589,7 @@ def get_ode_sampler(sde, shape, inverse_scaler, y=None,
 
         for t in time_steps[1:]:
             # Prepare time steps for the whole batch
-            time = t * torch.ones(xt.shape[0], device=xt.device)
+            time = t * torch.ones(xt.shape[0], device=xt.device)  
 
             # Get noise schedule for current time
             sigma_t, sigma_T, sigma_bart, alpha_t, alpha_T, alpha_bart = sde._sigmas_alphas(time)

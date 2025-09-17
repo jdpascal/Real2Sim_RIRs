@@ -80,6 +80,9 @@ class MultiRIRDataset(Dataset):
         
         total = config.data.num_room * config.data.pos_per_room
         train_max_index = int(total * 0.999)
+        if root_dir == "./dataset_ircam/" or root_dir == "./dataset_genelec_8030_near_measure_eval/":
+            logging.info("changing size of evaluation dataset")
+            train_max_index = 0
         
         if mode == "train":
             self.indices = np.arange(stop=train_max_index)
@@ -110,10 +113,12 @@ class MultiRIRDataset(Dataset):
                 'perfect_rir': np.array(room_data['perfect_rir'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
-                'real_rir': np.array(room_data['measure'])[
+                'real_rir': np.array(room_data['real_rir'])[
                     :,self.beginning + chunk_index * self.config.data.rir_samples_count : self.beginning + (chunk_index + 1) * self.config.data.rir_samples_count
                 ],
                 'rir_chunk_index': chunk_index,
+                'verite' : np.array(room_data['verite']),
+                'ordre' : np.array(room_data['ordre'])
             }
 
         if self.transform:
@@ -166,16 +171,17 @@ def get_dataset(config, uniform_dequantization=False, evaluation=False):
         )
     else:
         raise NotImplementedError(f"Dataset {config.data.dataset} non supporté.")
-
+    train_loader = 0
     # Création des DataLoaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=4,
-        drop_last=True,
-        pin_memory=True,
-    )
+    if config.data.npz_path != "./dataset_ircam/" and config.data.npz_path!= "./dataset_genelec_8030_near_measure_eval/":
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=4,
+            drop_last=True,
+            pin_memory=True,
+        )
     eval_loader = DataLoader(
         eval_dataset,
         batch_size=batch_size,

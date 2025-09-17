@@ -31,7 +31,7 @@ def get_config() -> ml_collections.ConfigDict:
     # training
     config.training = training = ml_collections.ConfigDict()
     training.batch_size = 2
-    training.n_iters = 50000
+    training.n_iters = 100000
     training.snapshot_freq = 2000
     training.log_freq = 100
     training.eval_freq = 100
@@ -50,14 +50,14 @@ def get_config() -> ml_collections.ConfigDict:
     sampling.noise_removal = True
     sampling.probability_flow = False
     sampling.snr = 0.33
-    sampling.method = "pc"
+    sampling.method = "ode"
     sampling.predictor = "none"
     sampling.corrector = "ald"
 
     # evaluation
     config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 40
-    evaluate.end_ckpt = 40
+    evaluate.begin_ckpt = 41
+    evaluate.end_ckpt = 41
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
@@ -83,10 +83,10 @@ def get_config() -> ml_collections.ConfigDict:
     data.channels = 32
     data.tfrecords_path = "./dat"
     data.num_channels = 1
-    # data.npz_path = "./dataset_genelec_8030_near_measure/"
-    data.npz_path = "./dataset_ircam/"
-    data.num_room = 2
-    data.pos_per_room = 10
+    data.npz_path = "./dataset_genelec_8030_near_measure_eval/"
+    # data.npz_path = "./dataset_ircam/"
+    data.num_room = 150
+    data.pos_per_room = 3
     data.sample_rate = 16000
 
     # model
