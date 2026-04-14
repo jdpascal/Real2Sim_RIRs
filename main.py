@@ -1,3 +1,18 @@
+    # Copyright (C) 2025  Jean-Daniel PASCAL PRIETO
+
+    # This program is free software: you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation, either version 3 of the License, or
+    # (at your option) any later version.
+
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+
+    # You should have received a copy of the GNU General Public License
+    # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """Training and evaluation"""
 
 import argparse
@@ -99,7 +114,7 @@ def main():
     # Parse input arguments
     args = parse_args()
 
-    # Création du répertoire de travail
+    # Creation of the working directory
     workdir = Path(args.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
 

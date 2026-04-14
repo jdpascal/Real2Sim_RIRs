@@ -1,23 +1,25 @@
 # coding=utf-8
-# Copyright 2020 The Google Research Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 # Lint as: python3
+
+    # Copyright (C) 2025  Jean-Daniel PASCAL PRIETO
+
+    # This program is free software: you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation, either version 3 of the License, or
+    # (at your option) any later version.
+
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+
+    # You should have received a copy of the GNU General Public License
+    # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Training NCSN++ on Church with VE SDE."""
 
 import ml_collections
 import torch
+from configs.default_MultiRIR_ncsnpp_configs import get_default_configs
 
 
 def get_config() -> ml_collections.ConfigDict:
@@ -27,42 +29,33 @@ def get_config() -> ml_collections.ConfigDict:
     Returns:
         ml_collections.ConfigDict: Configuration object
     """
-    config = ml_collections.ConfigDict()
+    config = get_default_configs()
     # training
-    config.training = training = ml_collections.ConfigDict()
-    training.batch_size = 2
-    training.n_iters = 100000
-    training.snapshot_freq = 2000
-    training.log_freq = 100
-    training.eval_freq = 100
+    training = config.training
+    training.batch_size = 4
+    training.n_iters = 400000
+    training.snapshot_freq = 10000
+    training.log_freq = 1000
+    training.eval_freq = 1000
     ## store additional checkpoints for preemption in cloud computing environments
     training.snapshot_freq_for_preemption = 2000
     ## produce samples at each snapshot.
-    training.snapshot_sampling = True
-    training.loss_type = "data_prediction" # score_matching denoiser data_prediction
-    training.continuous = True
-    training.reduce_mean = False
+    training.snapshot_sampling = False
     training.sde = "sbvesde"
 
     # sampling
-    config.sampling = sampling = ml_collections.ConfigDict()
+    sampling = config.sampling 
     sampling.n_steps_each = 1
-    sampling.noise_removal = True
-    sampling.probability_flow = False
-    sampling.snr = 0.33
-    sampling.method = "ode"
-    sampling.predictor = "none"
-    sampling.corrector = "ald"
+    sampling.method = "pc"  # pc or ode
 
     # evaluation
-    config.eval = evaluate = ml_collections.ConfigDict()
-    evaluate.begin_ckpt = 41
-    evaluate.end_ckpt = 41
+    evaluate = config.eval
+    evaluate.begin_ckpt = 23
+    evaluate.end_ckpt = 23
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
-    evaluate.num_samples = 200
-    # evaluate.num_samples = 500
+    evaluate.num_samples = 200   ### number of iteration of the diffusion model, for now evaluate.num_samples should be the same as model.num_scales
     evaluate.enable_loss = True
     evaluate.enable_bpd = False
     evaluate.bpd_dataset = "test"
@@ -70,82 +63,53 @@ def get_config() -> ml_collections.ConfigDict:
     evaluate.distance_peaks = False
 
     # data
-    config.data = data = ml_collections.ConfigDict()
+    data = config.data
     data.random_flip = True
     data.uniform_dequantization = False
     data.centered = False
-    data.dataset = "MultiRIR"
-    data.rir_samples_count = 256
-    data.total_rir_samples_count = 256 # should be a multiple of rir_samples_count
+    data.dataset = "Multichannel_RIR"
+    data.rir_samples_count = 512  # length of the rir used for training, the difference with total_rir_samples_count is if we want to use chunks of the rir for training
+    data.total_rir_samples_count = 512 # should be a multiple of rir_samples_count
     data.begining = 0
-    data.first_stride_convolution = 1 # best results with 1, because it keeps the best resolution
-    data.image_size = data.rir_samples_count / data.first_stride_convolution 
+    data.image_size = data.rir_samples_count / 2  # size of the input, number of channels
     data.channels = 32
-    data.tfrecords_path = "./dat"
     data.num_channels = 1
-    data.npz_path = "./dataset_genelec_8030_near_measure_eval/"
+    # data.npz_path = "./dataset_source_genelec_8020/"
     # data.npz_path = "./dataset_ircam/"
-    data.num_room = 150
+    data.npz_path = "./dataset_measurement_cerema/"
+
+    data.num_room = 50000
     data.pos_per_room = 3
     data.sample_rate = 16000
+    if data.npz_path == "./dataset_ircam/":
+        data.num_room = 1
+        data.pos_per_room = 10
+    if data.npz_path == "./dataset_measurement_cerema/":
+        data.num_room = 1
+        data.pos_per_room = 45
 
     # model
-    config.model = model = ml_collections.ConfigDict()
+    model = config.model 
     model.dropout = 0.0
     model.embedding_type = "fourier"
     model.name = "ncsnpp"
-    model.k = 2.6
+    model.k = 2.6           ## you can adjust k and c to change the shape of the noise schedule, k =2.6 and c = 0.4 shows good performance
     model.c = 0.4
-    # model.sigma_max = 0.7
-    # model.sigma_min = 0.07
-    model.sigma_max = 1.0
-    model.sigma_min = 0.1
-    model.num_scales = 200  #2
-    model.scale_by_sigma = False
-    model.ema_rate = 0.999
-    model.normalization = "GroupNorm"
-    model.nonlinearity = "elu"  # "lrelu"
-    model.nf = int(data.rir_samples_count / data.first_stride_convolution / 2)
-    # model.nf = int(data.rir_samples_count / data.first_stride_convolution / 4) # for 512 samples
-    model.ch_mult = (2,2,4,4,4,4) # for 256 samples
-    # model.ch_mult = (1,1,1,2,2,2,2) # for 512 samples
-    model.num_res_blocks = 3
-    # model.num_res_blocks = 2 # for 512 samples
-    model.attn_resolutions = (32,8)
-    # model.attn_resolutions = (8,) # for 512 samples
-    model.resamp_with_conv = True
-    model.conditional = True
-    model.fir = True
-    model.fir_kernel = [1, 3, 3, 1]
-    model.skip_rescale = True
-    model.resblock_type = "biggan"
-    model.progressive = "output_skip"
-    model.progressive_input = "input_skip"
-    model.progressive_combine = "sum"
-    model.attention_type = "ddpm"
-    model.init_scale = 0.0
-    model.fourier_scale = 2
-    model.conv_size = 3
-
-
+    model.num_scales = 200  # number of diffusion steps, for now if you train with 200 steps you should sample with 200 steps
+    # model.nf = int(data.rir_samples_count / 2)
+    model.nf = int(data.rir_samples_count / 4) # for 512 samples
+    # model.nf = int(data.rir_samples_count/ 8) # for 1024 samples
+    # model.ch_mult = (2,2,4,4,4,4) # for 256 samples
+    model.ch_mult = (1,1,1,2,2,2,2) # for 512 samples
+    # model.ch_mult = (1,1,1,1,2,2,2,2) # for 1024 samples
+    # model.num_res_blocks = 3
+    model.num_res_blocks = 1 # for 512 samples
+    # model.attn_resolutions = (32,8)
+    model.attn_resolutions = (8,) # for 512 samples
+    # model.attn_resolutions = (16,) # for 1024 samples
 
     # optimization
-    config.optim = optim = ml_collections.ConfigDict()
-    optim.weight_decay = 0
-    optim.optimizer = "Adam"
-    optim.lr = 1e-4
-    optim.beta1 = 0.9
-    optim.eps = 1e-8
-    optim.warmup = 5000
-    optim.grad_clip = 1.0
-
-    config.seed = 42
-    if torch.cuda.is_available():
-        config.device = torch.device("cuda")
-    elif torch.mps.is_available():
-        config.device = torch.device("mps")
-    else:
-        config.device = torch.device("cpu")
-
+    optim = config.optim
+    optim.lr = 2e-4
 
     return config

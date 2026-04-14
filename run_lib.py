@@ -1,19 +1,21 @@
 # coding=utf-8
-# Copyright 2020 The Google Research Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 # pylint: skip-file
+
+    # Copyright (C) 2025  Jean-Daniel PASCAL PRIETO
+
+    # This program is free software: you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation, either version 3 of the License, or
+    # (at your option) any later version.
+
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+
+    # You should have received a copy of the GNU General Public License
+    # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """Training and evaluation for score-based generative models."""
 
 import gc
@@ -33,7 +35,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 import datasets
-import evaluation_jd as evaluation
 import likelihood
 import losses
 import sampling
@@ -57,8 +58,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
         workdir: Répertoire de travail pour sauvegardes et logs TensorBoard.
     """
 
-    # torch.cuda.memory._record_memory_history()
-
     # Initialisation du modèle.
     score_model = mutils.create_model(config)
     ema = ExponentialMovingAverage(
@@ -69,19 +68,19 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     state = dict(optimizer=optimizer, model=score_model, ema=ema, step=0)
 
     logging.info("Creating checkpoints dirs...")
-    # Création des dossiers pour les checkpoints.
+    # Creation of the folders for the checkpoints.
     checkpoint_dir = workdir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_meta_dir = workdir / "checkpoints-meta" / "checkpoint.pth"
     checkpoint_meta_dir.parent.mkdir(parents=True, exist_ok=True)
 
     logging.info("Restore checkpoints...")
-    # Reprise de l'entraînement si un checkpoint intermédiaire existe.
+    # Continue the training from the latest checkpoint if it exists.
     state = restore_checkpoint(checkpoint_meta_dir, state, config.device)
     initial_step = int(state["step"])
 
     logging.info("Building dataloaders...")
-    # Construction des DataLoaders (en version PyTorch).
+    # Construction of the DataLoaders (version PyTorch).
     train_loader, eval_loader, _ = datasets.get_dataset(
         config,
         uniform_dequantization=config.data.uniform_dequantization,
@@ -93,11 +92,11 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     eval_iter = iter(eval_loader)
 
     logging.info("Creating normalization and inverse functions...")
-    # Création des fonctions de normalisation et d'inverse.
+    # Creation of the normalization and inverse functions.
     scaler = datasets.get_data_scaler(config)
     inverse_scaler = datasets.get_data_inverse_scaler(config)
 
-    # Configuration de la SDE.
+    # Configuration of the SDE.
     sde_name = config.training.sde.lower()
     if sde_name == "vpsde":
         sde = sde_lib.VPSDE(
@@ -106,20 +105,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             N=config.model.num_scales,
         )
         sampling_eps = 1e-3
-    elif sde_name == "subvpsde":
-        sde = sde_lib.subVPSDE(
-            beta_min=config.model.beta_min,
-            beta_max=config.model.beta_max,
-            N=config.model.num_scales,
-        )
-        sampling_eps = 1e-3
-    elif sde_name == "vesde":
-        sde = sde_lib.VESDE(
-            sigma_min=config.model.sigma_min,
-            sigma_max=config.model.sigma_max,
-            N=config.model.num_scales,
-        )
-        sampling_eps = 1e-5
     elif sde_name == "ouvesde":
         sde = sde_lib.OUVESDE(
             sigma_min=config.model.sigma_min,
@@ -137,7 +122,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
     else:
         raise NotImplementedError(f"SDE {config.training.sde} inconnu.")
 
-    # Préparation des fonctions de mise à jour pour l'entraînement et l'évaluation.
+    # Set up the training step function.
     optimize_fn = losses.optimization_manager(config)
     continuous = config.training.continuous
     reduce_mean = config.training.reduce_mean
@@ -176,10 +161,10 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             train_iter = iter(train_loader)
             batch = next(train_iter)
 
-        # Si le dataset contient des clés spécifiques (ex. 'perfect_rir' et 'real_rir'), on les traite.
+        # If the dataset provides both 'perfect_rir' and 'real_rir', we use them as a tuple for training.
         if "perfect_rir" in batch and "real_rir" in batch:
             perfect_rir = batch["perfect_rir"]
-            # print("perfect_rir.shape", perfect_rir.shape)
+
             # Si nécessaire, ajuster l'ordre des dimensions (ex. HWC -> CHW)
             if (
                 perfect_rir.ndim == 4
@@ -187,25 +172,18 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             ):
                 perfect_rir = perfect_rir.permute(0, 2, 3, 1)
             real_rir = batch["real_rir"]
-            # print("perfect_rir.shape", perfect_rir.shape)
-            # print("real_rir.shape", real_rir.shape)
+
             if real_rir.ndim == 4 and real_rir.shape[-1] != config.data.num_channels:
                 real_rir = real_rir.permute(0, 2, 3, 1)
-            # print("real_rir.shape", real_rir.shape)
             current_batch = (perfect_rir, real_rir)
             del perfect_rir, real_rir
         else:
-            # Pour un dataset classique avec la clé 'image'.
-            img = batch["image"]
-            if img.ndim == 4 and img.shape[-1] != config.data.num_channels:
-                img = img.permute(0, 3, 1, 2)
-            # Appliquer la normalisation (si nécessaire).
-            current_batch = scaler(img)
+            raise ValueError("Le batch doit contenir à la fois 'perfect_rir' et 'real_rir' pour l'entraînement.")
 
         # logging.info(f"memory summary before training: {torch.cuda.memory_summary()}")
 
         # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
-        # Exécuter une étape d'entraînement
+        # Execute a training step
         loss = train_step_fn(state, current_batch)
         # del current_batch
 
@@ -216,7 +194,7 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                 logging.info("étape: %d, loss entraînement: %.5e", step, loss.item())
                 fabric.log("training_loss", loss.item(), step)
 
-        # Sauvegarde d'un checkpoint temporaire pour reprise en cas d'interruption.
+        # Save checkpoints for preemption in cloud computing environments.
         # Run only on process with rank 0
         if (
             step != 0
@@ -232,18 +210,15 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
             except StopIteration:
                 eval_iter = iter(eval_loader)
                 eval_batch = next(eval_iter)
-            # Ici, on suppose que le dataset d'évaluation renvoie la clé 'perfect_rir' et 'real_rir'.
             eval_img_perfect = eval_batch["perfect_rir"].to(fabric.device).detach()
             eval_img_real = eval_batch["real_rir"].to(fabric.device).detach()
-            # print("avant permute ? eval perfect, real" , eval_img_perfect.shape, eval_img_real.shape)
             if (
                 eval_img_perfect.ndim == 4
                 and eval_img_perfect.shape[-1] != config.data.num_channels
             ):
                 eval_img_perfect = eval_img_perfect.permute(0, 2, 3, 1)
                 eval_img_real = eval_img_real.permute(0, 2, 3, 1)
-            # print("apres permute?" , eval_img_perfect.shape, eval_img_real.shape )
-            # eval_img = scaler(eval_img)
+
             eval_img_batch = (eval_img_perfect, eval_img_real)
             eval_loss = eval_step_fn(state, eval_img_batch)
             eval_loss = fabric.all_gather(eval_loss).mean()
@@ -287,7 +262,6 @@ def train(config: ConfigDict, workdir: Path, fabric: Fabric):
                     )
                     samples, n = sampling_fn(score_model)
                     ema.restore(score_model.parameters())
-                    # t = np.linspace(0, config.data.rir_samples_count, config.data.rir_samples_count) + 1e-2
 
                 for index, sample in enumerate(samples):
                     # Sélection du premier exemple du batch pour la comparaison
@@ -413,9 +387,6 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
             loss_type=loss_type,
         )
 
-    # if config.eval.enable_bpd:
-    #     likelihood_fn = likelihood.get_likelihood_fn(sde, inverse_scaler)
-
     sampling_shape = (
         config.eval.batch_size,
         config.data.num_channels,
@@ -458,23 +429,19 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
         ema.copy_to(score_model.parameters())
         logging.info(sum(p.numel() for p in score_model.parameters() if p.requires_grad))
 
-        # on garde une copie de la première rir
-        rir_chunks_count = config.data.total_rir_samples_count // config.data.rir_samples_count 
+        # On garde une copie de la première rir
+        # rir_chunks_count = config.data.total_rir_samples_count // config.data.rir_samples_count 
 
         # Évaluation de la loss sur l'ensemble du dataset d'évaluation.
         if config.eval.enable_loss:
             step = state["step"]
-            all_losses = {}
-            # Avant la boucle d'évaluation : on crée deux listes globales
-            k = 2
-            all_distances_gen = []
-            all_distances_real = []
+            all_losses = [ ]
 
-            for i in range(int(rir_chunks_count)):
-                all_losses[i] = []
+            # for i in range(int(rir_chunks_count)):
+            #     all_losses[i] = []
             for i, batch in enumerate(eval_loader):
                 logging.info("Évaluation de la loss sur le batch %d", i)
-                perfect_rir, real_rir, chunk_index, verite, ordre = batch["perfect_rir"], batch["real_rir"], batch['rir_chunk_index'], batch['verite'], batch['ordre']#, batch['number']
+                perfect_rir, real_rir, verite, ordre, geometry = batch["perfect_rir"], batch["real_rir"], batch['verite'], batch['ordre'], batch['geometry']
 
                 if real_rir.ndim == 4 and real_rir.shape[-1] != config.data.num_channels:
                     real_rir = real_rir.permute(0, 2, 3, 1)
@@ -485,29 +452,17 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                 eval_batch = perfect_rir, real_rir
                 loss_eval = eval_step(state, eval_batch)
                 del eval_batch
-                # logging.info(loss_eval)
-                # logging.info(f"chunk_index: {chunk_index}")
-                chunk_index = chunk_index.cpu().numpy()
+
+                # chunk_index = chunk_index.cpu().numpy()
                 loss_eval = loss_eval.cpu().numpy()
-                # logging.info(f"chunk_index: {chunk_index}")
-                # logging.info(f"loss_eval: {loss_eval}")
-                for chunk in range(len(chunk_index)) :
-                    all_losses[chunk_index[chunk]].append(loss_eval[chunk])
+
+                # for chunk in range(len(chunk_index)) :
+                #     all_losses[chunk_index[chunk]].append(loss_eval[chunk])
                 # all_losses[chunk_index].append(loss_eval.item())
+                all_losses.append(loss_eval.item())
 
                 # if (i + 1) * config.eval.batch_size <= rir_chunks_count :
                 if True :
-                    # if i == 0:
-                    # if True :
-                        # big_rir_generated = np.zeros(
-                        #     (config.data.total_rir_samples_count, config.data.channels)
-                        # )
-                        # big_rir_perfect = np.zeros( 
-                        #     (config.data.total_rir_samples_count, config.data.channels)
-                        # )
-                        # big_rir_real = np.zeros(
-                        #     (config.data.total_rir_samples_count, config.data.channels)
-                        # )
                     # On remplit le tableau avec les valeurs de la batch
                     sampling_fn = sampling.get_sampling_fn(
                             config,
@@ -525,12 +480,16 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     logging.info("samples shape: %s", samples[0].shape)
 
                     if config.eval.enable_sampling:
-                        for index, sample in enumerate(samples[-1]):
+                        for index, sample in enumerate(samples[-1]): #[-1]
                             # Sauvegarde des échantillons générés.
                             sample_filepath = os.path.join(
                                 this_sample_dir, f"sample_{index}_{i}.npz" #_chunk{i}
                             )
                             # if index == 199:
+                            for k, v in geometry.items():
+                                # print(f"geometry {k} shape: {len(v)}, dtype: {v.dtype}, device: {v.device}")
+                                v = torch.tensor(v)  # Convertir en tensor PyTorch
+                                geometry[k] = v.to("cpu").numpy()
                             with open(sample_filepath, "wb") as f:
                                 np.savez_compressed(
                                     f,
@@ -539,6 +498,7 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                                     real_rir=real_rir.detach().cpu().numpy(),
                                     verite=verite.cpu().numpy(),
                                     ordre=ordre.cpu().numpy(),
+                                    geometry=geometry,
                                 )
 
                     # Sélection du premier exemple du batch pour la comparaison
@@ -563,11 +523,9 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                     generated_sample = np.squeeze(
                             generated_sample, axis=0
                         )  # devient (longueur, canaux)
-                    # big_rir_generated[ i * config.data.rir_samples_count : (i + 1) * config.data.rir_samples_count, : ] = generated_sample
-                    # big_rir_perfect[ i * config.data.rir_samples_count : (i + 1) * config.data.rir_samples_count, : ] = perfect_rir_sample
-                    # big_rir_real[ i * config.data.rir_samples_count : (i + 1) * config.data.rir_samples_count, : ] = real_rir_sample
 
-                    if (i + 1) * config.eval.batch_size == rir_chunks_count:
+                    # if (i + 1) * config.eval.batch_size == rir_chunks_count:
+                    if True :
                         # On trace jusqu'à 32 canaux (ou le nombre maximum de canaux disponibles)
                         plt.ioff()
                         num_channels = min(32, perfect_rir_sample.shape[1])
@@ -602,18 +560,16 @@ def evaluate(config, workdir, eval_folder="eval", fabric=None):
                 
             # Gather loss from all processes, log value only on process with rank 0
             if fabric.is_global_zero :
-                for j in range(int(rir_chunks_count)):
-                    all_losses[j] = np.asarray(all_losses[j])
-                    all_losses[j] = np.mean(all_losses[j])
-                    fabric.log(f"evaluation loss{j}", all_losses[j].item(), step)
-                    logging.info("étape: %d, loss évaluation: %.5e", step, all_losses[j].item())
+                # for j in range(int(rir_chunks_count)):
+                #     all_losses[j] = np.asarray(all_losses[j])
+                #     all_losses[j] = np.mean(all_losses[j])
+                #     fabric.log(f"evaluation loss{j}", all_losses[j].item(), step)
+                #     logging.info("étape: %d, loss évaluation: %.5e", step, all_losses[j].item())
+                all_losses = np.asarray(all_losses)
+                all_losses = np.mean(all_losses)
+                fabric.log(f"evaluation loss", all_losses.item(), step)
+                logging.info("étape: %d, loss évaluation: %.5e", step, all_losses.item())
 
-            # all_losses = np.asarray(all_losses)
-            # loss_filepath = os.path.join(eval_dir, f"ckpt_{ckpt}_loss.npz")
-            # with open(loss_filepath, "wb") as f:
-            #     np.savez_compressed(
-            #         f, all_losses=all_losses, mean_loss=all_losses.mean()
-            #     )
 
 
 

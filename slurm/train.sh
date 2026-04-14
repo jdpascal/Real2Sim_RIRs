@@ -2,10 +2,10 @@
 
 #SBATCH -p publicgpu
 #SBATCH --nodes=1               # This needs to match --ddp-nodes
-#SBATCH --ntasks-per-node=2     # This needs to match --ddp-devices-per-node
-#SBATCH --gres=gpu:2            # Request N GPUs per machine
-
-#SBATCH --mem=0
+#SBATCH --ntasks-per-node=4     # This needs to match --ddp-devices-per-node
+#SBATCH --gres=gpu:4            # Request N GPUs per machine
+#SBATCH --constraint=gputc      # gpuh200  gputc
+#SBATCH --mem=32G
 #SBATCH --time=0-20:00:00
 
 # Load correct python and cuda modules
@@ -24,6 +24,7 @@ export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # export CUDA_VISIBLE_DEVICES=1
 # export TORCH_USE_CUDA_DSA
+srun python show_devices.py
 
 # Run main with training arguments
 srun python main.py \
@@ -32,4 +33,4 @@ srun python main.py \
     --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \
     --ddp-nodes 1\
-    --ddp-devices-per-node 2
+    --ddp-devices-per-node 4

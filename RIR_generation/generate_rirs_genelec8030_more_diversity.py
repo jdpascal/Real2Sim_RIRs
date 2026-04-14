@@ -1,3 +1,18 @@
+    # Copyright (C) 2025  Jean-Daniel PASCAL PRIETO
+
+    # This program is free software: you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation, either version 3 of the License, or
+    # (at your option) any later version.
+
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+
+    # You should have received a copy of the GNU General Public License
+    # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import concurrent.futures
 import json
 import logging
@@ -24,7 +39,7 @@ import function as fun
 num_room = 150
 positions_per_room = 3
 distance_src_mics = 1.63
-dist_mur = 1
+dist_walls = 1
 max_order_ism = 10
 delay = 78
 limit = 1024
@@ -363,9 +378,9 @@ def main():
             # Generate 2 random points in the room, with constraints on location
             # approx = fun.approximation_distance(0.01)
             pos_src, pos_mics = fun.generate_random_points(
-                Dx, Dy, Dz, distance_src_mics , dist_mur
+                Dx, Dy, Dz, distance_src_mics , dist_walls
             )
-            uncertainty_pos = (np.random.rand(3) * 2 -1) / 10     # Random uncertainty in the position of 10 cm
+            uncertainty_pos = (np.random.rand(3) * 2 - 1) / 10     # Random uncertainty in the position of 10 cm
             configurations.append(
                 (
                     list_dir,

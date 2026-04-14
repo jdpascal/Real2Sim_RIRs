@@ -1,20 +1,19 @@
 # coding=utf-8
-# Copyright 2020 The Google Research Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 # pylint: skip-file
+    # Copyright (C) 2025  Jean-Daniel PASCAL PRIETO
 
+    # This program is free software: you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation, either version 3 of the License, or
+    # (at your option) any later version.
+
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+
+    # You should have received a copy of the GNU General Public License
+    # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from . import utils, layers, layerspp, normalization
 import torch.nn as nn
@@ -32,6 +31,7 @@ conv1x1 = layerspp.conv1x1
 get_act = layers.get_act
 get_normalization = normalization.get_normalization
 default_initializer = layers.default_init
+logging.basicConfig(level=logging.INFO)
 
 
 @utils.register_model(name="ncsnpp")
@@ -42,7 +42,7 @@ class NCSNpp(nn.Module):
         super().__init__()
         self.config = config
         self.act = act = get_act(config)
-        self.register_buffer("sigmas", torch.tensor(utils.get_sigmas(config)))
+        # self.register_buffer("sigmas", torch.tensor(utils.get_sigmas(config)))
 
         self.nf = nf = config.model.nf
         ch_mult = config.model.ch_mult
@@ -172,15 +172,13 @@ class NCSNpp(nn.Module):
         else:
             raise ValueError(f"resblock type {resblock_type} unrecognized.")
 
-        # modules.append(conv3x3(config.data.channels * 2, int(config.data.rir_samples_count / 2), stride=2))
-        stride_first_convolution = self.config.data.first_stride_convolution
         modules.append(conv3x3(
             config.data.channels * 2,
-            int(config.data.rir_samples_count / stride_first_convolution),
+            int(config.data.rir_samples_count / 2),
             # 256,
-            stride=stride_first_convolution,
-            kernel_size=(9,1),
-            padding=(4,0)
+            stride=1,
+            kernel_size=(15,1),
+            padding=(7,0)
         ))
 
         # Downsampling block
@@ -305,11 +303,11 @@ class NCSNpp(nn.Module):
         modules.append(
             nn.ConvTranspose2d(
                 # 256,
-                int(config.data.rir_samples_count / stride_first_convolution),
+                int(config.data.rir_samples_count / 2),
                 config.data.channels,
-                kernel_size=(9, 1),
-                stride=(stride_first_convolution, 1),
-                padding=(4, 0),
+                kernel_size=(15, 1),
+                stride=1, ###### put stride 1 to have output size equal to input size ######
+                padding=(7, 0),
                 output_padding=(0, 0),  # (3,0) if stride_first_convolution == 4 else (1, 0) for stride_first_convolution == 2, else (0, 0) for stride_first_convolution == 1
             )
         )
@@ -319,6 +317,7 @@ class NCSNpp(nn.Module):
     def forward(self, x, y, time_cond):
         # timestep/noise_level embedding; only for continuous training
         modules = self.all_modules
+        # print(modules)
         if y is not None:
             # print(x.shape)
             x = torch.cat([x, y], dim=3)
@@ -326,6 +325,7 @@ class NCSNpp(nn.Module):
         if self.embedding_type == "fourier":
             # Gaussian Fourier features embeddings.
             used_sigmas = time_cond
+            logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
             temb = modules[m_idx](torch.log(used_sigmas))
             m_idx += 1
 
@@ -339,8 +339,10 @@ class NCSNpp(nn.Module):
             raise ValueError(f"embedding type {self.embedding_type} unknown.")
 
         if self.conditional:
+            logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
             temb = modules[m_idx](temb)
             m_idx += 1
+            logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
             temb = modules[m_idx](self.act(temb))
             m_idx += 1
         else:
@@ -352,11 +354,14 @@ class NCSNpp(nn.Module):
 
         # x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
         # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
+        logging.debug(f"START SHAPE: {x.shape}")
         x = x.permute(0, 3, 2, 1)
+        logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
         x = modules[m_idx](x)
         m_idx += 1
         # x = torch.reshape(x, (x.shape[0], x.shape[3], x.shape[2], x.shape[1]))
         x = x.permute(0, 3, 2, 1)
+        logging.debug(f"AFTER FIRST CONV SHAPE: {x.shape}")
         # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
 
         # Downsampling block
@@ -366,6 +371,7 @@ class NCSNpp(nn.Module):
         input_pyramid = None
         if self.progressive_input != "none":
             input_pyramid = x
+        logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
         hs = [modules[m_idx](x)]
         m_idx += 1
 
@@ -373,7 +379,8 @@ class NCSNpp(nn.Module):
             # Residual blocks for this resolution
             for i_block in range(self.num_res_blocks):
                 # print("residual_block input", hs[-1].shape)
-                logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+                logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
+                # logging.debug( sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad) )
                 # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
                 h = modules[m_idx](hs[-1], temb)
                 m_idx += 1
@@ -381,7 +388,7 @@ class NCSNpp(nn.Module):
 
                 if h.shape[-1] in self.attn_resolutions:
                     # print("attn_block input", h.shape)
-                    logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+                    logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
                     h = modules[m_idx](h)
                     m_idx += 1
                     # print("attn_block output", h.shape)
@@ -390,17 +397,19 @@ class NCSNpp(nn.Module):
 
             if i_level != self.num_resolutions - 1:
                 if self.resblock_type == "ddpm":
-                    logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+                    logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
                     h = modules[m_idx](hs[-1])
                     m_idx += 1
                 else:
-                    logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+                    logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
+                    logging.debug(f"bug SHAPE: {h.shape} and hs {hs[-1].shape} and temb {temb.shape}")
                     h = modules[m_idx](hs[-1], temb)
                     m_idx += 1
 
                 if self.progressive_input == "input_skip":
                     input_pyramid = self.pyramid_downsample(input_pyramid)
-                    logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+                    logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
+                    logging.debug(f"shape pyramide {input_pyramid.shape} and {h.shape}")
                     h = modules[m_idx](input_pyramid, h)
                     m_idx += 1
 
@@ -421,17 +430,17 @@ class NCSNpp(nn.Module):
         # print("m_idx", m_idx)
         # print("module:", modules[m_idx])
         h = hs[-1]
-        logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+        logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
         h = modules[m_idx](h, temb)
         m_idx += 1
         # print("m_idx", m_idx)
         # print("module:", modules[m_idx])
-        logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+        logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
         h = modules[m_idx](h)
         m_idx += 1
         # print("m_idx", m_idx)
         # print("module:", modules[m_idx])
-        logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+        logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
         h = modules[m_idx](h, temb)
         m_idx += 1
         # print("m_idx", m_idx)
@@ -505,16 +514,11 @@ class NCSNpp(nn.Module):
             h = modules[m_idx](h)
             m_idx += 1
 
-        # h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
         h = h.permute(0, 3, 2, 1)
-        # print(h.shape)
-        logging.debug("Module %d: %s", m_idx, modules[m_idx]._get_name())
+        logging.debug("Module %d: %s, parameters %d", m_idx, modules[m_idx]._get_name(),  sum(p.numel() for p in modules[m_idx].parameters() if p.requires_grad))
         h = modules[m_idx](h)
         m_idx += 1
-        # print(h.shape)
-        # h = torch.reshape(h, (h.shape[0], h.shape[3], h.shape[2], h.shape[1]))
         h = h.permute(0, 3, 2, 1)
-        # print(h.shape)
         assert m_idx == len(modules)
         if self.config.model.scale_by_sigma:
             used_sigmas = used_sigmas.reshape((x.shape[0], *([1] * len(x.shape[1:]))))

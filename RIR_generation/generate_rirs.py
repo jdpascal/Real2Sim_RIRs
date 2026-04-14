@@ -1,9 +1,26 @@
+    # Copyright (C) 2025  Jean-Daniel PASCAL PRIETO
+
+    # This program is free software: you can redistribute it and/or modify
+    # it under the terms of the GNU General Public License as published by
+    # the Free Software Foundation, either version 3 of the License, or
+    # (at your option) any later version.
+
+    # This program is distributed in the hope that it will be useful,
+    # but WITHOUT ANY WARRANTY; without even the implied warranty of
+    # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    # GNU General Public License for more details.
+
+    # You should have received a copy of the GNU General Public License
+    # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import concurrent.futures
 import json
 import logging
 import os
 import sys
 from pathlib import Path
+import gzip
+
 
 import numpy as np
 import pyroomacoustics as pra
@@ -18,14 +35,14 @@ from pyroomacoustics.directivities import (
 import function as fun
 
 # Constants
-num_room = 2
-positions_per_room = 10
-distance_src_mics = 1
-dist_mur = 1
+num_room = 50000
+positions_per_room = 3
+distance_src_mics = 1.63
+dist_walls = 1
 max_order_ism = 10
-delay = 83
+delay = 78
 limit = 1024
-crop_start = 50
+crop_start = 85
 
 # Coefficient of absorption more real, per octave band, per walls
 abs_coeffs_lower_bound = np.array(
@@ -54,24 +71,32 @@ center_freqs = [125, 250, 500, 1000, 2000, 4000, 8000]
 
 
 def calculate_rirs_for_config(
-    eigenmike: MeasuredDirectivityFile,
-    src_dir: MeasuredDirectivityFile,
+    list_dir: list,
+    genelec8020 ,
     room_dim: list[float],
     pos_src: np.ndarray,
+    uncertainty_pos,
     pos_mics: np.ndarray,
     pos_eigenmike,
     output_file_path: Path,
+    seed,
 ):
     """
     Calculates RIRs for the given configuration and writes result to an output JSON file.
     """
     # Orientation, test with source turn his back to the mics
     cartesian_coords = pos_mics - pos_src
-    r, theta, phi = fun.cartesian_to_spherical(-cartesian_coords) # remove the "-" to have the source facing the mics
-    orientation = Rotation3D([theta , phi], "zy", degrees=True)
+    r, theta, phi = fun.cartesian_to_spherical(cartesian_coords) # remove the "-" to have the source facing the mics
+    pos_src += uncertainty_pos
+    uncertainty_angle = np.random.rand(2) * 10 - 5      # Random uncertainty in the angle of 5 degrees
+    theta += uncertainty_angle[0]
+    phi += uncertainty_angle[1]
+    
+    orientation = Rotation3D([ -theta, phi ], "yz", degrees=True)
     theta_mic, phi_mic = fun.random_angles()
-    orientation_mic = Rotation3D([theta_mic, phi_mic], "zy", degrees=True)
+    orientation_mic = Rotation3D([-theta_mic, phi_mic], "yz", degrees=True)
     # dir = DirectionVector(theta, phi)
+
 
     # Pick random coefficient for absorption but realistic
     P = np.random.uniform(abs_coeffs_lower_bound, abs_coeffs_upper_bound)
@@ -114,6 +139,32 @@ def calculate_rirs_for_config(
             "center_freqs": center_freqs,
         },
     )
+    full_materials_mean = pra.make_materials(
+        ceiling={
+            "description": "5",
+            "coeffs": [np.mean(band_abs_profiles[5, :])],
+        },
+        floor={
+            "description": "4",
+            "coeffs": [np.mean(band_abs_profiles[4, :])],
+        },
+        east={
+            "description": "1",
+            "coeffs": [np.mean(band_abs_profiles[1, :])],
+        },
+        west={
+            "description": "0",
+            "coeffs": [np.mean(band_abs_profiles[0, :])],
+        },
+        north={
+            "description": "3",
+            "coeffs": [np.mean(band_abs_profiles[3, :])],
+        },
+        south={
+            "description": "2",
+            "coeffs": [np.mean(band_abs_profiles[2, :])],
+        },
+    )
 
     # Create the real room with real micro and source
     room_real = pra.ShoeBox(
@@ -124,33 +175,33 @@ def calculate_rirs_for_config(
         air_absorption=True,
         ray_tracing=False,
         min_phase=True,
+        use_rand_ism=True,
+        max_rand_disp=0.2,
+        flip_walls=True,
     )
 
     # Add source and microphone
-    genelec8020 = src_dir.get_source_directivity(
-        "Tannoy_System_1200", orientation=orientation
-    )
+    genelec8020.set_orientation(orientation)
     room_real.add_source(pos_src, directivity=genelec8020)
     # Get the directivity objects from the files and add mics
-    list_dir = []
     for j in range(32):
-        dir_obj_Emic = eigenmike.get_mic_directivity(
-            f"EM_32_{j}", orientation=orientation_mic
-        )
-        list_dir.append(dir_obj_Emic)
+        (list_dir[j]).set_orientation(orientation_mic)
     room_real.add_microphone_array(
         (np.zeros((32,3)) + pos_mics).T, directivity=list_dir
-    )  # , directivity=list_dir
+    )
 
     # Create the "perfect" room with omnidirectional micro and source
     room_perfect = pra.ShoeBox(
         room_dim,
         fs=16000,
         max_order=max_order_ism,
-        materials=full_materials,
+        materials=full_materials_mean,
         air_absorption=True,
         ray_tracing=False,
         min_phase=True,
+        use_rand_ism=True,
+        max_rand_disp=0.2,
+        flip_walls=False,
     )
 
     # Add source and microphone omnidirectionnal
@@ -164,8 +215,12 @@ def calculate_rirs_for_config(
     # room_perfect.add_microphone_array((pos_eigenmike.T + pos_mics).T)
 
     # Compute the RIR
+    np.random.seed(seed)  # For reproducibility
     room_real.compute_rir()
+    # logging.info("RIR computed for the real room.")
+    np.random.seed(seed)  # For reproducibility
     room_perfect.compute_rir()
+    # logging.info("RIR computed for the perfect room.")
     rir_real = room_real.rir
     rir_perfect = room_perfect.rir
 
@@ -192,7 +247,6 @@ def calculate_rirs_for_config(
         )
 
     test_perfect = test_perfect.reshape(32, max_perfect)
-
     max_real = np.max(np.array([(rir_real[i][0]).shape[0] for i in range(32)]))
     test_real = np.pad(
         np.array(rir_real[0][0]),
@@ -216,14 +270,32 @@ def calculate_rirs_for_config(
 
     test_real = test_real.reshape(32, max_real)
 
-    real_rir = test_real[:, crop_start + delay : crop_start + limit + delay] / np.max(
-        test_real[:, crop_start + delay : crop_start + limit + delay], axis=1
-    ).reshape(-1, 1)
+    real_rir = test_real[:, crop_start + delay : crop_start + limit + delay] #/ np.max(
+        # test_real[:, crop_start + delay : crop_start + limit + delay], axis=1
+    # ).reshape(-1, 1)
     real_rir = real_rir / np.max( np.abs(real_rir) )
-    perfect_rir = test_perfect[:, crop_start : crop_start + limit] / np.max(
-        test_perfect[:, crop_start : crop_start + limit], axis=1
-    ).reshape(-1, 1)
+    perfect_rir = test_perfect[:, crop_start : crop_start + limit]# / np.max(
+    #     test_perfect[:, crop_start : crop_start + limit], axis=1
+    # ).reshape(-1, 1)
     perfect_rir = perfect_rir / np.max( np.abs(perfect_rir) )
+    for s, src in enumerate(room_perfect.sources):
+        order = src.orders
+        src_image = (src.images)
+        list_src = []
+        list_ordre = []
+        for i in range(src_image.shape[1]):
+            if np.linalg.norm(src_image[: , i] - pos_mics) < 7.4:
+                list_src.append(src_image[:, i] - pos_mics)
+                list_ordre.append(order[i])
+
+        list_src = np.array(list_src)
+        list_ordre = np.array(list_ordre)
+        # simplifiée puis algo de tom
+        idx_sorted = np.argsort(np.linalg.norm(list_src,axis=1))
+        x_sorted = list_src[idx_sorted]
+        list_src = x_sorted
+        x_sorted_ord = list_ordre[idx_sorted]
+        list_ordre = x_sorted_ord
     # Store all calculated values for this configuration in a dict
     # We need to use tolist() here to convert from numpy arrays to python arrays that can be serialized to json
     room_data = {
@@ -236,11 +308,13 @@ def calculate_rirs_for_config(
             "pos_mics": pos_mics.tolist(),
         },
         "abs_coeffs": band_abs_profiles.tolist(),
+        'verite' : list_src.tolist(),#np.sort(np.linalg.norm(list_src, axis=1)),
+        'ordre' : list_ordre.tolist(),
     }
     # Write the contents of this dict to a file named with the number of the room and
     # current src/rcv position iteration
-    with open(output_file_path, "w", encoding="utf-8") as f:
-        json.dump(room_data, f, indent=4)
+    with gzip.open(output_file_path, "wt", encoding="utf-8") as f:
+        json.dump(room_data, f)
 
 
 def main():
@@ -250,18 +324,27 @@ def main():
     # list = download_sofa_files()
 
     # Reads the file containing the Eigenmike's directivity measurements
-    eigenmike = MeasuredDirectivityFile("EM32_Directivity", fs=16000)
+    eigenmike = MeasuredDirectivityFile("EM32_Directivity", fs=16000, interp_order=18)
 
     # Reads the file containing Genelec 8020 's directivity measurements
     src_dir = MeasuredDirectivityFile(
-        "LSPs_HATS_GuitarCabinets_Akustikmessplatz", fs=16000
+        "LSPs_HATS_GuitarCabinets_Akustikmessplatz", fs=16000, interp_order=18
     )
+    genelec8020 = src_dir.get_source_directivity(
+        "Genelec_8020", orientation=Rotation3D([0, 0], "yz", degrees=True)
+    )
+    list_dir = []
+    for j in range(32):
+        dir_obj_Emic = eigenmike.get_mic_directivity(
+            f"EM_32_{j}", orientation=Rotation3D([0, 0], "yz", degrees=True)
+        )
+        list_dir.append(dir_obj_Emic)
 
     path = db["EM32_Directivity"].path
     files = sf.open_sofa_file(path)
     pos_eigenmike = files[3]
 
-    workdir = "./dataset_source_Tannoy/"
+    workdir = "./dataset_source_genelec_8020/"
     os.makedirs(workdir, exist_ok=True)
 
     # --- Configuration du logger pour écrire dans un fichier ---
@@ -283,7 +366,7 @@ def main():
     logger.info("Début de la génération des données.")
 
     configurations = []
-    for room_index in range(0, num_room):
+    for room_index in range(36820, num_room):
         # Dimensions of the room
         Dx, Dy, Dz = fun.generate_random_room_dimensions()
         room_dim = [Dx, Dy, Dz]
@@ -292,17 +375,20 @@ def main():
             # Generate 2 random points in the room, with constraints on location
             approx = fun.approximation_distance(0.1)
             pos_src, pos_mics = fun.generate_random_points(
-                Dx, Dy, Dz, distance_src_mics + approx, dist_mur
+                Dx, Dy, Dz, distance_src_mics , dist_walls
             )
+            uncertainty_pos = (np.random.rand(3) * 2 - 1) / 10     # Random uncertainty in the position of 10 cm
             configurations.append(
                 (
-                    eigenmike,
-                    src_dir,
+                    list_dir,
+                    genelec8020,
                     room_dim,
                     pos_src,
+                    uncertainty_pos,
                     pos_mics,
                     pos_eigenmike,
-                    Path(workdir) / f"room_{room_index}_{position_index}.json",
+                    Path(workdir) / f"room_{room_index}_{position_index}.json.gz",
+                    np.random.randint(0, 1000000),
                 )
             )
 
