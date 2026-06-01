@@ -311,8 +311,8 @@ def calculate_rirs_for_config(
             "pos_mics": pos_mics.tolist(),
         },
         "abs_coeffs": band_abs_profiles.tolist(),
-        'verite' : list_src.tolist(),#np.sort(np.linalg.norm(list_src, axis=1)),
-        'ordre' : list_ordre.tolist(),
+        'ground_truth' : list_src.tolist(),#np.sort(np.linalg.norm(list_src, axis=1)),
+        'order' : list_ordre.tolist(),
     }
     # Write the contents of this dict to a file named with the number of the room and
     # current src/rcv position iteration

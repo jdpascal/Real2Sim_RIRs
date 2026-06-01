@@ -50,8 +50,8 @@ def get_config() -> ml_collections.ConfigDict:
 
     # evaluation
     evaluate = config.eval
-    evaluate.begin_ckpt = 23
-    evaluate.end_ckpt = 23
+    evaluate.begin_ckpt = 40
+    evaluate.end_ckpt = 40
     # for now only support batch size of 1
     evaluate.batch_size = 1
     evaluate.enable_sampling = True
@@ -68,8 +68,8 @@ def get_config() -> ml_collections.ConfigDict:
     data.uniform_dequantization = False
     data.centered = False
     data.dataset = "Multichannel_RIR"
-    data.rir_samples_count = 512  # length of the rir used for training, the difference with total_rir_samples_count is if we want to use chunks of the rir for training
-    data.total_rir_samples_count = 512 # should be a multiple of rir_samples_count
+    data.rir_samples_count = 256  # length of the rir used for training, the difference with total_rir_samples_count is if we want to use chunks of the rir for training
+    data.total_rir_samples_count = 256 # should be a multiple of rir_samples_count
     data.begining = 0
     data.image_size = data.rir_samples_count / 2  # size of the input, number of channels
     data.channels = 32
@@ -77,6 +77,7 @@ def get_config() -> ml_collections.ConfigDict:
     # data.npz_path = "./dataset_source_genelec_8020/"
     # data.npz_path = "./dataset_ircam/"
     data.npz_path = "./dataset_measurement_cerema/"
+    # data.npz_path = "./dataset_iwaenc/"
     data.measured_rir = True # if True the dataset should contain the measured rir in addition to the perfect and real rirs
 
 
@@ -98,11 +99,12 @@ def get_config() -> ml_collections.ConfigDict:
     model.k = 2.6           ## you can adjust k and c to change the shape of the noise schedule, k =2.6 and c = 0.4 shows good performance
     model.c = 0.4
     model.num_scales = 200  # number of diffusion steps, for now if you train with 200 steps you should sample with 200 steps
-    # model.nf = int(data.rir_samples_count / 2)
-    model.nf = int(data.rir_samples_count / 4) # for 512 samples
+    model.nf = int(data.rir_samples_count / 2)
+    # model.nf = int(data.rir_samples_count / 4) # for 512 samples
     # model.nf = int(data.rir_samples_count/ 8) # for 1024 samples
     # model.ch_mult = (2,2,4,4,4,4) # for 256 samples
-    model.ch_mult = (1,1,1,2,2,2,2) # for 512 samples
+    model.ch_mult = (1,1,2,2,2,2) # for 256 samples
+    # model.ch_mult = (1,1,1,2,2,2,2) # for 512 samples
     # model.ch_mult = (1,1,1,1,2,2,2,2) # for 1024 samples
     # model.num_res_blocks = 3
     model.num_res_blocks = 1 # for 512 samples

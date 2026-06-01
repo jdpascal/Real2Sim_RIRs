@@ -50,6 +50,8 @@ class NCSNpp(nn.Module):
         self.attn_resolutions = attn_resolutions = config.model.attn_resolutions
         dropout = config.model.dropout
         resamp_with_conv = config.model.resamp_with_conv
+        kernel_first_convolution = config.model.kernel_first_convolution
+        padding_first_convolution = (kernel_first_convolution - 1) // 2
         self.num_resolutions = num_resolutions = len(ch_mult)
         self.all_resolutions = all_resolutions = [
             config.data.image_size // (2**i) for i in range(num_resolutions)
@@ -177,8 +179,8 @@ class NCSNpp(nn.Module):
             int(config.data.rir_samples_count / 2),
             # 256,
             stride=1,
-            kernel_size=(15,1),
-            padding=(7,0)
+            kernel_size=(kernel_first_convolution,1),
+            padding=(padding_first_convolution,0)
         ))
 
         # Downsampling block
@@ -305,9 +307,9 @@ class NCSNpp(nn.Module):
                 # 256,
                 int(config.data.rir_samples_count / 2),
                 config.data.channels,
-                kernel_size=(15, 1),
+                kernel_size=(kernel_first_convolution, 1),
                 stride=1, ###### put stride 1 to have output size equal to input size ######
-                padding=(7, 0),
+                padding=(padding_first_convolution, 0),
                 output_padding=(0, 0),  # (3,0) if stride_first_convolution == 4 else (1, 0) for stride_first_convolution == 2, else (0, 0) for stride_first_convolution == 1
             )
         )

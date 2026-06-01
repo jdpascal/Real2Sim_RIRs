@@ -37,8 +37,8 @@ import function as fun
 # Constants
 num_room = 50000
 positions_per_room = 3
-distance_src_mics = 1.63
-dist_walls = 1
+distance_src_mics = 1.53
+dist_walls = 0.9
 max_order_ism = 10
 delay = 78
 limit = 1024
@@ -308,8 +308,8 @@ def calculate_rirs_for_config(
             "pos_mics": pos_mics.tolist(),
         },
         "abs_coeffs": band_abs_profiles.tolist(),
-        'verite' : list_src.tolist(),#np.sort(np.linalg.norm(list_src, axis=1)),
-        'ordre' : list_ordre.tolist(),
+        'ground_truth' : list_src.tolist(),#np.sort(np.linalg.norm(list_src, axis=1)),
+        'oreder' : list_ordre.tolist(),
     }
     # Write the contents of this dict to a file named with the number of the room and
     # current src/rcv position iteration
@@ -318,60 +318,78 @@ def calculate_rirs_for_config(
 
 
 def main():
+    workdir = "./dataset_iwaenc/"
+    os.makedirs(workdir, exist_ok=True)
+    
+    # --- Configuration du logger pour écrire dans un fichier ---
+    log_file = os.path.join(workdir, "stdout.txt")
+    gfile_stream = open(log_file, "w", encoding="utf-8")
+    formatter = logging.Formatter(
+        "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
+    )
+    handler = logging.StreamHandler(gfile_stream)
+    handler.setFormatter(formatter)
+    logger = logging.getLogger()
+    # logger.addHandler(handler)
+    # Add another handler to also log to stdout
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    
+    # logger.info("Opening SOFA database...")
     db = SOFADatabase()
+    # logger.info("...Done")
     # db.list()
     # print(db['EM32_Directivity'])
     # list = download_sofa_files()
 
+    logger.info("Reading data from SOFA database...")
+    logger.info("   Reading EigenMike data...")
     # Reads the file containing the Eigenmike's directivity measurements
     eigenmike = MeasuredDirectivityFile("EM32_Directivity", fs=16000, interp_order=18)
+    logger.info("   ...Done")
 
     # Reads the file containing Genelec 8020 's directivity measurements
+    logger.info("   Reading Genelec data...")
     src_dir = MeasuredDirectivityFile(
         "LSPs_HATS_GuitarCabinets_Akustikmessplatz", fs=16000, interp_order=18
     )
     genelec8020 = src_dir.get_source_directivity(
         "Genelec_8020", orientation=Rotation3D([0, 0], "yz", degrees=True)
     )
+    # logger.info("   ...Done")
+    
+    # logger.info("   Reading Eigenmike directivity...")
     list_dir = []
     for j in range(32):
+        # logger.info("       %d / 32...", j + 1)
         dir_obj_Emic = eigenmike.get_mic_directivity(
             f"EM_32_{j}", orientation=Rotation3D([0, 0], "yz", degrees=True)
         )
         list_dir.append(dir_obj_Emic)
+    # logger.info("   ...Done")
 
+    # logger.info("   Reading Eigenmike position...")
     path = db["EM32_Directivity"].path
     files = sf.open_sofa_file(path)
     pos_eigenmike = files[3]
+    # logger.info("   ...Done")
+    # logger.info("...Done")
 
-    workdir = "./dataset_source_genelec_8020/"
-    os.makedirs(workdir, exist_ok=True)
-
-    # --- Configuration du logger pour écrire dans un fichier ---
-    log_file = os.path.join(workdir, "stdout.txt")
-    gfile_stream = open(log_file, "w", encoding="utf-8")
-    handler = logging.StreamHandler(gfile_stream)
-    formatter = logging.Formatter(
-        "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
-    )
-    handler.setFormatter(formatter)
-    logger = logging.getLogger()
-    logger.addHandler(handler)
-    # Add another handler to also log to stdout
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-
-    logger.info("Début de la génération des données.")
+    logger.info("Starting generating room configurations")
 
     configurations = []
-    for room_index in range(36820, num_room):
+    for room_index in range(0, num_room):
+        logger.info("   Generate room config n°%d...", room_index)
         # Dimensions of the room
-        Dx, Dy, Dz = fun.generate_random_room_dimensions()
+        Dx, Dy, Dz = fun.generate_random_room_dimensions(
+            min_size_x=3.5, max_size_x=10.0, min_size_y=3.5, max_size_y=10.0, min_size_z=2.0, max_size_z=4.5
+        )
         room_dim = [Dx, Dy, Dz]
         # Generate #positions_per_room mesures in the room
         for position_index in range(positions_per_room):
+            # logger.info("       Position %d / %d", position_index + 1, positions_per_room)
             # Generate 2 random points in the room, with constraints on location
             approx = fun.approximation_distance(0.1)
             pos_src, pos_mics = fun.generate_random_points(
@@ -391,8 +409,12 @@ def main():
                     np.random.randint(0, 1000000),
                 )
             )
+    #     logger.info("   ...Done")
+            
+    # logger.info("Done generating room configs")
 
-    # Run the function in parallel and wait for all processes to complete
+    # # Run the function in parallel and wait for all processes to complete
+    # logger.info("Start computing RIRs...")
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures = [
             executor.submit(calculate_rirs_for_config, *config)
@@ -407,7 +429,7 @@ def main():
                 except Exception as e:
                     logger.error(f"An error occurred: {e}")
 
-    logger.info("Génération des données terminée.")
+    # logger.info("Done !")
     # Fermeture du fichier de log
     gfile_stream.close()
 

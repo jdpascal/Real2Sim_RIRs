@@ -28,7 +28,7 @@ srun python show_devices.py
 
 # Run main with training arguments
 srun python main.py \
-    --config configs/ve/MultiRIR_ncsnpp_SBVE.py \
+    --config configs/ve/MultiRIR_ncsnpp_SBVE_256samples_ICASSP_2026.py \
     --mode train \
     --eval-folder eval \
     --workdir exp/ve/MultiRIR_ncsnpp_continuous \

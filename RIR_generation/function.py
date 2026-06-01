@@ -66,7 +66,7 @@ def fibonacci(samples=32, rds=0.042):
 
 # murs entre 2,5 et 5 metres, plafond entre 3 et 5
 def generate_random_room_dimensions(
-    min_size_x=7.5, max_size_x=10, min_size_y=3.5, max_size_y=6, min_size_z=2.0, max_size_z=4
+    min_size_x=7.5, max_size_x=10.0, min_size_y=3.5, max_size_y=6.0, min_size_z=2.0, max_size_z=4.0,
 ):
     # Génère aléatoirement les dimensions de la salle (L, W, H)
     L = np.random.uniform(min_size_x, max_size_x)
@@ -75,29 +75,86 @@ def generate_random_room_dimensions(
     return L, W, H
 
 
-def generate_random_points(L, W, H, distance, distance_murs=1.5):
-    # Assurer que la salle est assez grande pour placer deux points à une distance donnée
-    if min(L, W, H) <= distance:
-        raise ValueError("La salle est trop petite pour placer les points à la distance spécifiée.")
-    # Assurer que la distance des murs est respectée
-    if distance_murs >= min(L, W, H) / 2:
-        raise ValueError("La distance des murs est trop grande par rapport aux dimensions de la salle.")
-    # Placer le premier point de manière aléatoire dans la salle
-    point1 = np.array([np.random.uniform(distance_murs, L - distance_murs),
-                       np.random.uniform(distance_murs, W - distance_murs),
-                       np.random.uniform(distance_murs, H - distance_murs)])
+# def generate_random_points(L, W, H, distance, distance_murs=1.5):
+#     # Assurer que la salle est assez grande pour placer deux points à une distance donnée
+#     if min(L, W, H) <= distance - distance_murs * 2:
+#         raise ValueError("La salle est trop petite pour placer les points à la distance spécifiée.")
+#     # Assurer que la distance des murs est respectée
+#     if distance_murs >= min(L, W, H) / 2:
+#         raise ValueError("La distance des murs est trop grande par rapport aux dimensions de la salle.")
+#     # Placer le premier point de manière aléatoire dans la salle
+#     point1 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+#                        np.random.uniform(distance_murs, W - distance_murs),
+#                        np.random.uniform(distance_murs, H - distance_murs)])
     
-    # Placer le deuxième point à la distance donnée du premier point
-    point2 = np.array([np.random.uniform(distance_murs, L - distance_murs),
-                       np.random.uniform(distance_murs, W - distance_murs),
-                       np.random.uniform(distance_murs, H - distance_murs)])
-    while np.linalg.norm(point2 - point1) < distance:
-        point2 = np.array([np.random.uniform(distance_murs, L - distance_murs),
-                           np.random.uniform(distance_murs, W - distance_murs),
-                           np.random.uniform(distance_murs, H - distance_murs)])
-    point2 = point1 + (point2 - point1) * (distance / np.linalg.norm(point2 - point1))
+#     # Placer le deuxième point à la distance donnée du premier point
+#     point2 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+#                        np.random.uniform(distance_murs, W - distance_murs),
+#                        np.random.uniform(distance_murs, H - distance_murs)])
+
+#     while np.linalg.norm(point2 - point1) < distance:
+#         # print("                 POINT 1:", point1, ", POINT 2:", point2, ", DISTANCE:", distance, ", NORM:", np.linalg.norm(point2 - point1))
+#         point1 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+#                            np.random.uniform(distance_murs, W - distance_murs),
+#                            np.random.uniform(distance_murs, H - distance_murs)])
+#         point2 = np.array([np.random.uniform(distance_murs, L - distance_murs),
+#                            np.random.uniform(distance_murs, W - distance_murs),
+#                            np.random.uniform(distance_murs, H - distance_murs)])
+#     point2 = point1 + (point2 - point1) * (distance / np.linalg.norm(point2 - point1))
     
-    return point1, point2
+#     return point1, point2
+
+def generate_random_points(L, W, H, distance, distance_murs=1.5, max_point_attempts=80, max_direction_attempts=100):
+    """Generate two points inside the room at a fixed Euclidean distance.
+
+    The first point is placed randomly within the safe interior, then a
+    random unit direction is sampled until the second point at the given
+    distance is also inside the safe bounds.
+    """
+    min_bound = np.array([distance_murs, distance_murs, distance_murs], dtype=float)
+    max_bound = np.array([L - distance_murs, W - distance_murs, H - distance_murs], dtype=float)
+
+    if np.any(max_bound <= min_bound):
+        raise ValueError("Les dimensions de la salle sont trop petites pour respecter la distance aux murs.")
+
+    max_possible_distance = np.linalg.norm(max_bound - min_bound)
+    if distance > max_possible_distance:
+        raise ValueError(
+            "La salle est trop petite pour placer deux points à la distance spécifiée. "
+            f"Distance max possible = {max_possible_distance:.3f}, demandée = {distance:.3f}."
+        )
+
+    def random_unit_vector():
+        v = np.random.normal(size=3)
+        norm = np.linalg.norm(v)
+        return v / norm if norm > 0 else np.array([1.0, 0.0, 0.0])
+
+    def point_inside_bounds(point):
+        return np.all(point >= min_bound) and np.all(point <= max_bound)
+
+    for _ in range(max_point_attempts):
+        point1 = np.random.uniform(min_bound, max_bound)
+        for _ in range(max_direction_attempts):
+            direction = random_unit_vector()
+            point2 = point1 + direction * distance
+            if point_inside_bounds(point2):
+                return point1, point2
+
+    # Fallback: try systematic axis-aligned solutions if random search fails.
+    for _ in range(max_point_attempts):
+        point1 = np.random.uniform(min_bound, max_bound)
+        for axis in range(3):
+            for sign in (-1.0, 1.0):
+                candidate = point1.copy()
+                candidate[axis] = point1[axis] + sign * distance
+                if point_inside_bounds(candidate):
+                    return point1, candidate
+
+    raise RuntimeError(
+        "Impossible de générer deux points à la distance fixe pour ces dimensions de salle. "
+        "Vérifiez la taille de la salle et la distance demandée."
+    )
+    
 
 
 def cartesian_to_spherical(cartesian_coords):

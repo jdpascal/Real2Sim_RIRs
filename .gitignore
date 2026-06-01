@@ -175,6 +175,8 @@ cython_debug/
 
 # Tensorboard run ouputs
 runs/
+.tensorboard-info2/
+
 # Model checkpoints etc
 exp/
 # dataset(s)
@@ -182,3 +184,6 @@ dataset*/
 
 # slurm outputs
 slurm-*.out
+
+# VS Code
+.vscode2/

@@ -76,6 +76,7 @@ class MultiRIRDataset(Dataset):
         self.config = config
         self.mode = mode
         self.transform = transform
+        self.measured_rir = config.data.measured_rir
 
         # total_samples_count = config.data.total_rir_samples_count
         # self.rir_chunks_count = total_samples_count // config.data.rir_samples_count
@@ -83,8 +84,8 @@ class MultiRIRDataset(Dataset):
         
         total = config.data.num_room * config.data.pos_per_room
         train_max_index = int(total * 0.90)
-        ## Except for evaluation dataset, we want to run over all the rooms, so we set train_max_index to 1
-        if root_dir == "./dataset_ircam/" or root_dir == "./dataset_genelec_8030_near_measure_eval/" or root_dir == "./dataset_genelec_8020/" or root_dir == "./dataset_measurement_cerema/":
+        ## For measurement dataset, we want to run over all the rooms, so we set train_max_index to 1, it cannot be 0 because of the dataloader which needs at least one sample in the train set, and we want to have all the rooms in the evaluation set
+        if self.measured_rir: 
             logging.info("changing size of evaluation dataset")
             train_max_index = 1
         
@@ -99,6 +100,8 @@ class MultiRIRDataset(Dataset):
         
     def __getitem__(self, idx):
         room_index = self.indices[idx]
+        ## I had the idea to split the rir in chunks, train or only evaluate on each chunk to see if the model can generalize to different parts of the rir
+        # but for now I train and evaluate on the whole rir, so I set chunk_index to 0 and I don't use it in the code, but I keep it here in case I want to do this experiment in the future
         # if self.mode == "train":
             # room_index = self.indices[idx]
             # chunk_index = 0
@@ -126,17 +129,21 @@ class MultiRIRDataset(Dataset):
                     'perfect_rir': np.array(room_data['perfect_rir'])[
                         :,self.beginning: self.beginning + self.config.data.rir_samples_count
                     ],
-                    'real_rir': np.array(room_data['measurement_rir'])[
+                    'real_rir': np.array(room_data['real_rir'])[
                         :,self.beginning : self.beginning + self.config.data.rir_samples_count
                     ],
                     # 'rir_chunk_index': chunk_index,
                     'geometry': room_data['geometry'],
-                    'verite' : np.array(room_data['verite']),
-                    'ordre' : np.array(room_data['ordre'])
+                    'ground_truth' : np.array(room_data['ground_truth']),
+                    'order' : np.array(room_data['order'])
                 }
                 sample['real_rir'] = sample['real_rir'] / np.max(sample['real_rir'])
                 sample['perfect_rir'] = sample['perfect_rir'] / np.max(sample['perfect_rir'])
-
+            if self.measured_rir:
+                sample['measured_rir'] = np.array(room_data['measured_rir'])[
+                    :,self.beginning : self.beginning + self.config.data.rir_samples_count
+                ]
+                sample['measured_rir'] = sample['measured_rir'] / np.max(sample['measured_rir'])
         if self.transform:
             sample = self.transform(sample)
             sample['perfect_rir'] = sample['perfect_rir'][:, None, :].astype(np.float32)
